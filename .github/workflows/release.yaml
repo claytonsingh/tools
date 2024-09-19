@@ -1,0 +1,81 @@
+on:
+  push:
+    tags: 'v*'
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set Env
+        run: |
+          echo "RELEASE_NAME=${GITHUB_REF_NAME}" >> ${GITHUB_ENV}
+      - name: Create Release
+        run: gh release create "${GITHUB_REF_NAME}" --title "${{ env.RELEASE_NAME }}" --generate-notes --draft
+        env:
+          GITHUB_TOKEN: ${{ github.TOKEN }}
+  build-exchange:
+    name: Build Exchange
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./exchange
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          mkdir bin
+          gcc exchange.c -s -Os -o exchange
+      - name: Package
+        run: |
+          tar -czv -O -C bin . > exchange.tar.gz
+      - name: Upload Release
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" exchange.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ github.TOKEN }}
+  build-sig:
+    name: Build Sig
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./sig
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.20'
+      - name: Build
+        run: |
+          mkdir bin
+          go get .
+          GOOS=linux   GOARCH=arm64   go build -o bin/sig-linux-arm64       .
+          GOOS=linux   GOARCH=amd64   go build -o bin/sig-linux-x64         .
+          GOOS=linux   GOARCH=riscv64 go build -o bin/sig-linux-riscv64     .
+          GOOS=windows GOARCH=arm64   go build -o bin/sig-windows-arm64.exe .
+          GOOS=windows GOARCH=amd64   go build -o bin/sig-windows-x64.exe   .
+      - name: Test
+        run: go test
+      - name: Package
+        run: |
+          tar -czv -O -C bin . > sig.tar.gz
+          echo "${SIG_KEY}" | bin/sig-linux-x64 sign --if sig.tar.gz /dev/stdin --of sig.tar.sig.gz
+        env:
+          SIG_KEY: ${{ secrets.SIG_KEY }}
+      - name: Upload Release
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" sig.tar.gz sig.tar.sig.gz
+        env:
+          GITHUB_TOKEN: ${{ github.TOKEN }}
