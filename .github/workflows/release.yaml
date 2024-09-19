@@ -29,6 +29,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          mkdir sig
+          curl -s "$(curl -s https://api.github.com/repos/claytonsingh/tools/releases/latest | jq -r '.assets[] | select(.name == "sig.tar.gz") | .browser_download_url')" -L -o- | tar -xzv -C sig
       - name: Build
         run: |
           mkdir bin
@@ -36,9 +40,12 @@ jobs:
       - name: Package
         run: |
           tar -czv -O -C bin . > exchange.tar.gz
+          echo "${SIG_KEY}" | sig/sig-linux-x64 sign --if exchange.tar.gz /dev/stdin --of exchange.tar.sig.gz
+        env:
+          SIG_KEY: ${{ secrets.SIG_KEY }}
       - name: Upload Release
         run: |
-          gh release upload "${GITHUB_REF_NAME}" exchange.tar.gz
+          gh release upload "${GITHUB_REF_NAME}" exchange.tar.gz exchange.tar.sig.gz
         env:
           GITHUB_TOKEN: ${{ github.TOKEN }}
   build-sig:
