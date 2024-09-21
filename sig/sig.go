@@ -903,7 +903,7 @@ func (this *ed25519Key) Sign(hash []byte) (string, error) {
 	if !this.isPrivate {
 		return "", fmt.Errorf("cannot sign: no private key available")
 	}
-	signature, err := this.privateKey.Sign(nil, hash, &ed25519.Options{Hash: crypto.SHA512})
+	signature, err := this.privateKey.Sign(nil, hash, &ed25519.Options{Hash: crypto.Hash(0)})
 	if err != nil {
 		return "", err
 	}
@@ -914,7 +914,7 @@ func (this *ed25519Key) Verify(hash []byte, signature []byte) error {
 	if this.publicKey == nil {
 		return fmt.Errorf("cannot verify: no public key available")
 	}
-	if err := ed25519.VerifyWithOptions(this.publicKey, hash, signature, &ed25519.Options{Hash: crypto.SHA512}); err != nil {
+	if err := ed25519.VerifyWithOptions(this.publicKey, hash, signature, &ed25519.Options{Hash: crypto.Hash(0)}); err != nil {
 		return err
 	}
 	return nil
