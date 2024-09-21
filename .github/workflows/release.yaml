@@ -40,7 +40,7 @@ jobs:
       - name: Package
         run: |
           tar -czv -O -C bin . > exchange.tar.gz
-          echo "${SIG_KEY}" | sig/sig-linux-x64 sign --if exchange.tar.gz /dev/stdin --of exchange.tar.sig.gz
+          sig/sig-linux-x64 sign --if exchange.tar.gz --of exchange.tar.sig.gz <(printenv SIG_KEY)
         env:
           SIG_KEY: ${{ secrets.SIG_KEY }}
       - name: Upload Release
@@ -78,7 +78,7 @@ jobs:
       - name: Package
         run: |
           tar -czv -O -C bin . > sig.tar.gz
-          echo "${SIG_KEY}" | bin/sig-linux-x64 sign --if sig.tar.gz /dev/stdin --of sig.tar.sig.gz
+          bin/sig-linux-x64 sign --if sig.tar.gz --of sig.tar.sig.gz <(printenv SIG_KEY)
         env:
           SIG_KEY: ${{ secrets.SIG_KEY }}
       - name: Upload Release
