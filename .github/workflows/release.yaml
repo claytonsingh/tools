@@ -36,7 +36,7 @@ jobs:
       - name: Build
         run: |
           mkdir bin
-          gcc exchange.c -s -Os -o exchange
+          gcc exchange.c -s -Os -o bin/exchange
       - name: Package
         run: |
           tar -czv -O -C bin . > exchange.tar.gz
