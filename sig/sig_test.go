@@ -134,7 +134,7 @@ func TestSigCli(t *testing.T) {
 			args:     []string{"inspect", "--if", filepath.Join(testDir, "test.txt.sig")},
 			wantExit: 0,
 			checkOut: func(t *testing.T, out []byte) {
-				expected := "cQBQY+x1KQrCLDeTOkrN\n"
+				expected := "!hash-sha512         kiwVVPAbYunE5r2ULyxcRXJ9Ngg6H4cewJzAjLBjEpjvXeXMEdkv0nTLHNKItKWyNgE3mVvlyeElVCsYOJjJBQ\ncQBQY+x1KQrCLDeTOkrN lz4P8GZ9CEONNlTvBMMKp8yIZdrqgrLE4dlhdkNXfwlECRv7M5CSJ6/rtoUm88+ZALREv2QyPkjHythyByWhDQ\n"
 				if !bytes.Equal(out, []byte(expected)) {
 					t.Errorf("Expected output to equal %q, got: %q", expected, out)
 				}
@@ -145,7 +145,7 @@ func TestSigCli(t *testing.T) {
 			args:     []string{"inspect", "--if", filepath.Join(testDir, "test.txt.sig.gz")},
 			wantExit: 0,
 			checkOut: func(t *testing.T, out []byte) {
-				expected := "cQBQY+x1KQrCLDeTOkrN\n"
+				expected := "!hash-sha512         kiwVVPAbYunE5r2ULyxcRXJ9Ngg6H4cewJzAjLBjEpjvXeXMEdkv0nTLHNKItKWyNgE3mVvlyeElVCsYOJjJBQ\ncQBQY+x1KQrCLDeTOkrN lz4P8GZ9CEONNlTvBMMKp8yIZdrqgrLE4dlhdkNXfwlECRv7M5CSJ6/rtoUm88+ZALREv2QyPkjHythyByWhDQ\n"
 				if !bytes.Equal(out, []byte(expected)) {
 					t.Errorf("Expected output to equal %q, got: %q", expected, out)
 				}

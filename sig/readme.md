@@ -133,7 +133,7 @@ sig fetch --of downloaded_document.txt --etag etag_storage.txt https://example.c
 
 ### Inspecting Signatures
 
-Display all fingerprints of signatures present in a signed document. The input may optionally be gzip compressed.
+Display all headers present in a signed document. The input may optionally be gzip compressed.
 
 ```bash
 # Inspect signatures from stdin
@@ -166,24 +166,31 @@ sig fingerprint your_private_key.pem your_public_key.pem
 
 Sig uses a simple structured format to store document content along with its signatures. It consists of two main parts:
 
-1. Document Content
-2. Signature Section
+1. Signature Section
+2. Document Content
+
+The signature section is human readable and can be easily inspected and modified. It consists of key value pairs. Keys must be unique and duplicates are considered undefined behavior.
+
+Most pairs are `[fingerprint]:[signature]` raw base64 encoded. Metadata pairs start with an exclimation mark and may be added by sig or other programs.
+
+`!hash-sha256:[hash]` is used as a checksum and compared against the hash of the document content.
 
 ### Structure
 
 ```
-[Document Content]
-\n\nsig-0.1\n
-[Fingerprint1]:[Signature1]\n
-[Fingerprint2]:[Signature2]\n
+sig-0.1\n
+[Key1]:[Value2]\n
 ...
-[FingerprintN]:[SignatureN]\n
+[KeyN]:[ValueN]\n
+\n
+[Document Content]
+[EOF]
 ```
 
 ### Details
 
 - **Document Content**: The original data being signed.
-- **Signature Section**: Starts after the last double newline (`\n\n`) with `sig-0.1` indicating the format version.
+- **Signature Section**: Starts with `sig-0.1` indicating the format version.
 - **Fingerprints**: 20-byte base64-encoded strings derived from public keys.
 - **Signatures**: Base64-encoded Ed25519 signatures.
 - **Capacity**: Supports up to 1213 signatures within the 128 KB limit.

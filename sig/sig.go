@@ -25,30 +25,27 @@ Sig File Format
 
 The sig file format is a simple structure for signing and verifying documents. It consists of two main parts:
 
-1. Document Content
-2. Signature Section
+1. Signature Section
+2. Document Content
 
 Structure:
 
-    [Document Content]
-    \n\n
     sig-0.1\n
-    [Fingerprint1]:[Signature1]\n
-	...
-    [FingerprintN]:[SignatureN]\n
+    [Key1]:[Value1]\n
+    ...
+    [KeyN]:[ValueN]\n
+    \n
+    [Document Content]
     [EOF]
 
 Details:
 
-- The document content is the original data being signed.
-- The last instance of a double newline (\n\n) in the file separates the content from the signature section.
 - The signature section starts with "sig-0.1" to indicate the format version.
-- Each subsequent line contains a fingerprint and signature pair, separated by a colon.
+- Each subsequent line contains a keys value pair separated by a colon.
 - Fingerprints are 20-character base64-encoded strings (120 bits) derived from the public key.
 - Signatures are base64-encoded Ed25519 signatures.
-- The signature section can accommodate up to 1213 individual signatures within the 128 KB limit.
-- Multiple signatures can be added to the same document.
-- The signature section is always after the end of the file, after the last double newline.
+- A blank line separates the signature section from the document content.
+- The document content follows the blank line and continues until the end of the file.
 */
 
 // Operatations
@@ -74,8 +71,8 @@ Details:
 // sig --fetch='http://example.com/file.tar.sig.gz' --etag=tags/file test.pub > new.tar; echo $?
 // sig --fetch='http://example.com/file.tar.sig'    --etag=tags/file test.pub > new.tar; echo $?
 
-const FooterPrefix = "sig-"
-const MaxFooterSize = 1024 * 128
+const HeaderPrefix = "sig-"
+const MaxHeaderSize = 1024 * 128
 const FingerprintSize = 15 // 15 bytes = 120 bits
 
 var ErrNotModified = fmt.Errorf("content not modified")
@@ -96,9 +93,10 @@ type opts struct {
 			Keys []string `positional-arg-name:"keys" required:"1" description:"Public/private key files to fingerprint"`
 		} `positional-args:"yes" required:"yes"`
 	} `command:"fingerprint" description:"Display fingerprints for public/private keys"`
+
 	CmdInspect struct {
 		FileIn string `long:"if" description:"Input file path (default: stdin)" default:"-" default-mask:"-"`
-	} `command:"inspect" description:"Display fingerprints of signatures in a document"`
+	} `command:"inspect" description:"Display headers of sig file"`
 
 	CmdSign struct {
 		FileIn  string `long:"if" description:"Input file path (default: stdin)" default:"-" default-mask:"-"`
@@ -215,15 +213,13 @@ func cmdSign(opts opts) error {
 		defer d()
 	}
 
-	// Process input
-	tmp := gzip.NewWriter(ft)
-
 	keys, err := loadPriKeysFromFiles(opts.CmdSign.Args.Keys)
 	if err != nil {
 		return fmt.Errorf("failed to load private keys: %w", err)
 	}
 
-	hash, signatures, _, err := UnpackDocument(fi, tmp)
+	// Copy the input to the temporary file, decode headers, and check for errors
+	hash, headers, _, err := UnpackDocument(io.TeeReader(fi, ft), io.Discard)
 	if err != nil {
 		return fmt.Errorf("failed to unpack document: %w", err)
 	}
@@ -234,15 +230,7 @@ func cmdSign(opts opts) error {
 		if err != nil {
 			return fmt.Errorf("failed to make signature: %w", err)
 		}
-		signatures[f] = s
-	}
-
-	if err := WriteSignatures(tmp, signatures); err != nil {
-		return err
-	}
-
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("failed to close gzip writer: %w", err)
+		headers[f] = s
 	}
 
 	// Write out content
@@ -252,8 +240,20 @@ func cmdSign(opts opts) error {
 	if _, err := ft.Seek(0, 0); err != nil {
 		return fmt.Errorf("failed to seek temporary file: %w", err)
 	}
+
+	writeOutput := func(out io.Writer) error {
+		tmp := gzip.NewWriter(out)
+		defer tmp.Close()
+		headers["!hash-sha512"] = base64.RawStdEncoding.EncodeToString(hash)
+		WriteHeader(tmp, headers)
+		if _, _, _, err := UnpackDocument(ft, tmp); err != nil {
+			return fmt.Errorf("failed to unpack document: %w", err)
+		}
+		return nil
+	}
+
 	if opts.CmdSign.FileOut == "-" {
-		if _, err := io.Copy(os.Stdout, ft); err != nil {
+		if err := writeOutput(os.Stdout); err != nil {
 			return fmt.Errorf("failed to copy to stdout: %w", err)
 		}
 	} else if opts.CmdSign.FileOut == opts.CmdSign.FileIn {
@@ -264,7 +264,7 @@ func cmdSign(opts opts) error {
 		if err := fi.Truncate(0); err != nil {
 			return fmt.Errorf("failed to truncate output file: %w", err)
 		}
-		if _, err := io.Copy(fi, ft); err != nil {
+		if err := writeOutput(fi); err != nil {
 			return fmt.Errorf("failed to copy to output file: %w", err)
 		}
 	} else {
@@ -274,7 +274,7 @@ func cmdSign(opts opts) error {
 		}
 		defer file.Close()
 
-		if _, err := io.Copy(file, ft); err != nil {
+		if err := writeOutput(file); err != nil {
 			return fmt.Errorf("failed to copy to output file: %w", err)
 		}
 	}
@@ -297,14 +297,18 @@ func cmdInspect(opts opts) error {
 
 	// Collect signatures into a slice and sort them
 	var signatureList []string
-	for signature := range signatures {
-		signatureList = append(signatureList, signature)
+	var klen = 0
+	for k := range signatures {
+		signatureList = append(signatureList, k)
+		if len(k) > klen {
+			klen = len(k)
+		}
 	}
 	sort.Strings(signatureList)
 
 	// Print sorted signatures
 	for _, signature := range signatureList {
-		fmt.Println(signature)
+		fmt.Printf("%-*s %s\n", klen, signature, signatures[signature])
 	}
 	return nil // Return nil if successful
 }
@@ -356,8 +360,10 @@ func cmdVerify(isFetch bool, keys []string, inputSource string, outputDest strin
 		return fmt.Errorf("failed to unpack and verify document: %w", err)
 	}
 
-	if !ok {
+	if ok == nil {
 		return fmt.Errorf("verification failed: no matching key found")
+	} else {
+		fmt.Fprintf(os.Stderr, "Successful verification with fingerprint: %s\n", ok.Fingerprint())
 	}
 
 	// Common output handling
@@ -405,28 +411,25 @@ func cmdVerify(isFetch bool, keys []string, inputSource string, outputDest strin
 //   - keys []ed25519.PublicKey: A slice of public keys to use for signature verification.
 //
 // Returns:
-//   - ok bool: True if the document was successfully unpacked and at least one signature was verified, false otherwise. If ok is false and e is nil, it means no matching key was found for verification.
+//   - key CryptoKey: The first key that successfully verified the document's signature, or nil if no key passed validation.
 //   - e error: Any error encountered during the unpacking or verification process.
 //
 // The function first unpacks the document using UnpackDocument. If signatures are found and no errors occur during unpacking,
-// it attempts to verify the document's hash against each provided public key. The function returns true if any key successfully
+// it attempts to verify the document's hash against each provided public key. The function returns the first key that successfully
 // verifies the signature, indicating the document is authentic according to at least one of the provided keys.
-func UnpackAndVerifyDocument(reader io.Reader, writer io.Writer, keys []CryptoKey) (ok bool, e error) {
+func UnpackAndVerifyDocument(reader io.Reader, writer io.Writer, keys []CryptoKey) (key CryptoKey, e error) {
 	hash, signatures, found, err := UnpackDocument(reader, writer)
 	if err == nil && found {
 		for _, key := range keys {
 			if signature, ok := signatures[key.Fingerprint()]; ok {
 				sig, _ := base64.RawStdEncoding.DecodeString(signature)
 				if key.Verify(hash, sig) == nil {
-					return true, nil
+					return key, nil
 				}
-				//if Verify(hash, key, sig) == nil {
-				//	return true, nil
-				//}
 			}
 		}
 	}
-	return false, err
+	return nil, err
 }
 
 // UnpackDocument reads and unpacks a document from the provided reader, writes the content to the writer,
@@ -438,7 +441,7 @@ func UnpackAndVerifyDocument(reader io.Reader, writer io.Writer, keys []CryptoKe
 //
 // Returns:
 //   - []byte: The SHA-512 hash of the document content.
-//   - map[string]string: A map of fingerprints to their corresponding signatures, if present.
+//   - map[string]string: A map of headers to their corresponding values, if present.
 //   - bool: True if signatures were found, false otherwise.
 //   - error: Any error encountered during the unpacking process.
 //
@@ -447,18 +450,12 @@ func UnpackAndVerifyDocument(reader io.Reader, writer io.Writer, keys []CryptoKe
 // to the provided writer and hashed. If no signature section is found, it processes the
 // entire input as document content.
 func UnpackDocument(reader io.Reader, writer io.Writer) ([]byte, map[string]string, bool, error) {
-
 	pReader := peekbuffer.NewPeekBuffer(reader)
-	// Make a front and back buffer
-	buffA := make([]byte, MaxFooterSize)
-	buffB := make([]byte, MaxFooterSize)
-	sizeA := 0
-	sizeB := 0
 	h := sha512.New()
-	var err error
-	var stream io.Reader
+	headers := make(map[string]string)
+	var stream *peekbuffer.PeekBuffer
 
-	// If input is gzip then decompress it
+	// Check if input is gzip and set up appropriate reader
 	buf, err := pReader.Peek(2)
 	if err != nil || len(buf) != 2 {
 		return nil, nil, false, fmt.Errorf("failed to peek input: %w", err)
@@ -470,109 +467,133 @@ func UnpackDocument(reader io.Reader, writer io.Writer) ([]byte, map[string]stri
 				return nil, nil, false, fmt.Errorf("failed to create gzip reader: %w", err)
 			}
 			defer gzReader.Close()
-			stream = gzReader
+			stream = peekbuffer.NewPeekBuffer(gzReader)
 		} else {
 			stream = pReader
 		}
 	}
 
-	// Copy document, the signatures are in the last buffSize bytes
-	for {
-		sizeA, err = io.ReadFull(stream, buffA)
-		if err != nil {
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				// End of document cat buffers into one
-				buffA = append(buffB[:sizeB], buffA[:sizeA]...)
-				sizeA += sizeB
-				break
-			} else {
-				return nil, nil, false, fmt.Errorf("error reading from stream: %w", err)
-			}
-		}
-
-		// Write out B
-		if sizeB > 0 {
-			if _, writeErr := writer.Write(buffB[:sizeB]); writeErr != nil {
-				return nil, nil, false, fmt.Errorf("failed to write: %w", writeErr)
-			}
-			if _, hashErr := h.Write(buffB[:sizeB]); hashErr != nil {
-				return nil, nil, false, fmt.Errorf("failed to write: %w", hashErr)
-			}
-		}
-
-		// Swap buffers
-		buffA, buffB = buffB, buffA
-		sizeB = sizeA
-	}
-
-	// buffA Contains the end of the document + delimiter + signatures
-	index := bytes.LastIndex(buffA[:sizeA], []byte{'\n', '\n'})
-	if index != -1 {
-
-		// fmt.Println("Hash:", base64.RawStdEncoding.EncodeToString(h.Sum(nil)))
-		// fmt.Println(string(buffA[index+2 : sizeA]))
-
-		j := strings.Split(string(buffA[index+2:sizeA]), "\n")
-		if strings.HasPrefix(j[0], FooterPrefix) {
-
-			signatures := make(map[string]string, len(j))
-			for _, line := range j[1:] {
-				parts := strings.SplitN(line, ":", 2)
-				if len(parts) == 2 && len(parts[0]) == FingerprintSize*4/3 {
-					signatures[parts[0]] = parts[1]
+	// Helper function to read a line
+	readLine := func() ([]byte, error) {
+		var line []byte
+		for {
+			// PeekBuffer.ReadByte is buffered so no need to worry about performance
+			b, err := stream.ReadByte()
+			if err != nil {
+				if err == io.EOF {
+					return line, nil
 				}
+				return nil, err
 			}
-
-			// Write out the last of the document
-			if _, writeErr := writer.Write(buffA[:index]); writeErr != nil {
-				return nil, nil, false, fmt.Errorf("failed to write to writer: %w", writeErr)
+			if b == '\n' {
+				return line, nil
 			}
-			if _, hashErr := h.Write(buffA[:index]); hashErr != nil {
-				return nil, nil, false, fmt.Errorf("failed to write to hash: %w", hashErr)
-			}
-			return h.Sum(nil), signatures, true, nil
+			line = append(line, b)
 		}
 	}
 
-	// No "sig-" section
-	// just hash the document and return no signatures
+	// Check for FooterPrefix using Peek
+	prefixBuf, err := stream.Peek(len(HeaderPrefix))
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("failed to peek for FooterPrefix: %w", err)
+	}
 
-	// Write out the last of the document
-	if _, writeErr := writer.Write(buffA[:sizeA]); writeErr != nil {
-		return nil, nil, false, fmt.Errorf("failed to write to writer: %w", writeErr)
+	hasSignatures := string(prefixBuf) == HeaderPrefix
+
+	signatureSectionSize := 1
+
+	if hasSignatures {
+		{
+			// Read and discard the first line (FooterPrefix)
+			line, err := readLine()
+			if err != nil {
+				return nil, nil, false, fmt.Errorf("failed to read FooterPrefix line: %w", err)
+			}
+
+			signatureSectionSize += len(line) + 1 // +1 for the newline character
+		}
+
+		// Read signatures
+		for {
+			line, err := readLine()
+			if err != nil {
+				return nil, nil, false, fmt.Errorf("failed to read signature line: %w", err)
+			}
+			if len(line) == 0 {
+				break // Empty line indicates end of signatures
+			}
+			signatureSectionSize += len(line) + 1 // +1 for the newline character
+			if signatureSectionSize >= MaxHeaderSize {
+				return nil, nil, false, fmt.Errorf("signature section exceeds maximum size")
+			}
+			parts := strings.SplitN(string(line), ":", 2)
+			if len(parts) == 2 {
+				headers[parts[0]] = parts[1]
+			}
+		}
 	}
-	if _, hashErr := h.Write(buffA[:sizeA]); hashErr != nil {
-		return nil, nil, false, fmt.Errorf("failed to write to hash: %w", hashErr)
+
+	// Read and hash document content
+	if _, err := io.Copy(io.MultiWriter(writer, h), stream); err != nil {
+		return nil, nil, false, fmt.Errorf("failed to read/write document content: %w", err)
 	}
-	return h.Sum(nil), make(map[string]string), false, nil
+
+	if hasSignatures {
+		// Check for a header named "!hash-sha512" and compare that to h.Sum(nil)
+		if hashValue, ok := headers["!hash-sha512"]; !ok {
+			return nil, nil, false, fmt.Errorf("missing hash header")
+		} else {
+			expectedHash := h.Sum(nil)
+			decodedHash, err := base64.RawStdEncoding.DecodeString(hashValue)
+			if err != nil {
+				return nil, nil, false, fmt.Errorf("failed to decode hash value: %w", err)
+			}
+			if !bytes.Equal(decodedHash, expectedHash) {
+				return nil, nil, false, fmt.Errorf("hash mismatch: expected %s, got %s", base64.RawStdEncoding.EncodeToString(expectedHash), base64.RawStdEncoding.EncodeToString(decodedHash))
+			}
+		}
+	}
+
+	return h.Sum(nil), headers, hasSignatures, nil
 }
 
-// WriteSignatures writes a set of signatures to the provided writer in a specific format.
+// WriteHeader writes a set of headers to the provided writer in a specific format.
 //
 // Parameters:
-//   - w io.Writer: The writer to which the signatures will be written.
-//   - signatures map[string]string: A map of fingerprints to their corresponding signatures.
+//   - w io.Writer: The writer to which the headers will be written.
+//   - headers map[string]string: A map of keys to their corresponding values.
 //
 // Returns:
-//   - error: An error if the write operation fails or if the signature section exceeds the maximum size.
-func WriteSignatures(w io.Writer, signatures map[string]string) error {
+//   - error: An error if the write operation fails or if the headers section exceeds the maximum size.
+func WriteHeader(w io.Writer, headers map[string]string) error {
 	sigLen := 0
 
-	// Write out delimiter + signatures
-	s := []byte("\n\n" + FooterPrefix + "0.1\n")
+	// Write signature header
+	s := []byte(HeaderPrefix + "0.1\n")
 	sigLen += len(s)
 	if _, err := w.Write(s); err != nil {
 		return fmt.Errorf("failed to write signature header: %w", err)
 	}
-	for fp, signature := range signatures {
-		s := []byte(fp + ":" + signature + "\n")
+
+	// Write signatures
+	for header, value := range headers {
+		if strings.Contains(header, ":") || strings.Contains(header, "\n") || strings.Contains(value, ":") || strings.Contains(value, "\n") {
+			return fmt.Errorf("header contains invalid characters: %q %q", header, value)
+		}
+		s := []byte(header + ":" + value + "\n")
 		sigLen += len(s)
 		if _, err := w.Write(s); err != nil {
 			return fmt.Errorf("failed to write signature: %w", err)
 		}
 	}
 
-	if sigLen >= MaxFooterSize {
+	// Write separator
+	if _, err := w.Write([]byte("\n")); err != nil {
+		return fmt.Errorf("failed to write separator: %w", err)
+	}
+	sigLen += 1
+
+	if sigLen >= MaxHeaderSize {
 		return fmt.Errorf("signature section exceeds maximum size")
 	}
 
