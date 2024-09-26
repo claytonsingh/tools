@@ -162,6 +162,18 @@ sig fingerprint your_private_key.pem
 sig fingerprint your_private_key.pem your_public_key.pem
 ```
 
+**Using OpenSSL**
+
+The following commands use OpenSSL to display the fingerprint of a public or private key. Please note that only the first key in a pem file is returned.
+
+```bash
+# Display fingerprint for a public key using OpenSSL
+openssl pkey -in your_public_key.pem -pubin -outform DER | openssl dgst -sha512 -binary | head -c 15 | base64
+
+# Display fingerprint for a private key using OpenSSL
+openssl pkey -in your_private_key.pem -pubout -outform DER | openssl dgst -sha512 -binary | head -c 15 | base64
+```
+
 ## Sig File Format
 
 Sig uses a simple structured format to store document content along with its signatures. It consists of two main parts:
