@@ -9,11 +9,37 @@ import sys
 import tempfile
 from contextlib import ExitStack
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import asymmetric, serialization
+from cryptography.hazmat.primitives import asymmetric, hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
+from cryptography.hazmat.primitives.asymmetric.mldsa import (
+    MLDSA44PrivateKey,
+    MLDSA44PublicKey,
+    MLDSA65PrivateKey,
+    MLDSA65PublicKey,
+    MLDSA87PrivateKey,
+    MLDSA87PublicKey,
+)
 
 HEADER_PREFIX = "sig-"
+HEADER_VERSION = "0.1"
 MAX_HEADER_SIZE = 1024 * 128
 FINGERPRINT_SIZE = 15  # 15 bytes = 120 bits
+
+PRIVATE_KEY_TYPES = (
+    asymmetric.ed25519.Ed25519PrivateKey,
+    asymmetric.rsa.RSAPrivateKey,
+    MLDSA44PrivateKey,
+    MLDSA65PrivateKey,
+    MLDSA87PrivateKey,
+)
+PUBLIC_KEY_TYPES = (
+    asymmetric.ed25519.Ed25519PublicKey,
+    asymmetric.rsa.RSAPublicKey,
+    MLDSA44PublicKey,
+    MLDSA65PublicKey,
+    MLDSA87PublicKey,
+)
 
 def b64encode(b):
     """
@@ -29,6 +55,36 @@ def b64decode(s):
 
 class NullWriter:
     def write(self, s): pass
+
+class ChunkReader(io.RawIOBase):
+    """
+    Presents an iterator of byte chunks as a readable stream.
+
+    A streamed response body is only exposed as an iterator. Its underlying
+    raw stream closes itself once the body has been consumed, which the gzip
+    reader cannot tolerate: it reads the trailer after the last chunk and
+    would see a closed file rather than end of stream. Iterating also applies
+    any Content-Encoding the server used, which reading the raw stream does
+    not.
+    """
+
+    def __init__(self, chunks):
+        self.chunks = iter(chunks)
+        self.pending = b''
+
+    def readable(self):
+        return True
+
+    def readinto(self, target):
+        while not self.pending:
+            try:
+                self.pending = next(self.chunks)
+            except StopIteration:
+                return 0
+        size = min(len(target), len(self.pending))
+        target[:size] = self.pending[:size]
+        self.pending = self.pending[size:]
+        return size
 
 class TeeReader():
     def __init__(self, reader, writer):
@@ -61,11 +117,11 @@ class CryptoKey:
         self.public_key = None
         self.is_private = False
 
-        if isinstance(key, asymmetric.ed25519.Ed25519PrivateKey):
+        if isinstance(key, PRIVATE_KEY_TYPES):
             self.private_key = key
             self.public_key = key.public_key()
             self.is_private = True
-        elif isinstance(key, asymmetric.ed25519.Ed25519PublicKey):
+        elif isinstance(key, PUBLIC_KEY_TYPES):
             self.public_key = key
         else:
             raise ValueError("Unsupported key type")
@@ -73,14 +129,20 @@ class CryptoKey:
     def sign(self, hash_bytes):
         if not self.is_private:
             raise ValueError("Cannot sign: no private key available")
-        signature = self.private_key.sign(hash_bytes)
+        if isinstance(self.private_key, asymmetric.rsa.RSAPrivateKey):
+            signature = self.private_key.sign(hash_bytes, padding.PKCS1v15(), Prehashed(hashes.SHA512()))
+        else:
+            signature = self.private_key.sign(hash_bytes)
         return b64encode(signature)
 
     def verify(self, hash_bytes, signature):
         if not self.public_key:
             raise ValueError("Cannot verify: no public key available")
         try:
-            self.public_key.verify(signature, hash_bytes)
+            if isinstance(self.public_key, asymmetric.rsa.RSAPublicKey):
+                self.public_key.verify(signature, hash_bytes, padding.PKCS1v15(), Prehashed(hashes.SHA512()))
+            else:
+                self.public_key.verify(signature, hash_bytes)
             return True
         except:
             return False
@@ -95,19 +157,56 @@ class CryptoKey:
         hash_obj = hashlib.sha512(key_bytes)
         return b64encode(hash_obj.digest()[:FINGERPRINT_SIZE])
 
-def load_keys(file_path):
+def binary_stream(stream):
+    buf = getattr(stream, "buffer", None)
+    if buf is not None:
+        return buf
+    return stream
+
+def iter_pem_blocks(data):
+    begin_marker = b"-----BEGIN "
+    end_marker = b"-----END "
+    pos = 0
+    while True:
+        begin = data.find(begin_marker, pos)
+        if begin < 0:
+            return
+        end_label = data.find(end_marker, begin)
+        if end_label < 0:
+            return
+        end = data.find(b"-----", end_label + len(end_marker))
+        if end < 0:
+            return
+        end += 5
+        yield data[begin:end]
+        pos = end
+
+def load_keys(file_path, private_only=False):
     with open(file_path, 'rb') as key_file:
         pem_data = key_file.read()
-    
-    try:
-        private_key = serialization.load_pem_private_key(pem_data, password=None)
-        return [CryptoKey(private_key),]
-    except:
+
+    keys = []
+    for block in iter_pem_blocks(pem_data):
         try:
-            public_key = serialization.load_pem_public_key(pem_data)
-            return [CryptoKey(public_key),]
-        except:
+            private_key = serialization.load_pem_private_key(block, password=None)
+            keys.append(CryptoKey(private_key))
+            continue
+        except Exception:
+            pass
+        if private_only:
+            # Signing needs a private key, so a public key or a certificate
+            # in the file is an error rather than a block to skip over
+            raise ValueError("Key is of the wrong type")
+        try:
+            public_key = serialization.load_pem_public_key(block)
+            keys.append(CryptoKey(public_key))
+            continue
+        except Exception:
             raise ValueError("Invalid key file")
+
+    # A file with no PEM blocks yields no keys and no error. Callers decide
+    # what that means: fingerprint reports nothing, verify finds no match
+    return keys
 
 def unpack_document(reader, writer):
     """
@@ -126,10 +225,10 @@ def unpack_document(reader, writer):
 
     reader = io.BufferedReader(reader)
     
-    # Check if input is gzipped
+    # Check if input is gzipped. A document shorter than the magic cannot be
+    # gzip, so a short peek falls through to the plain stream path rather than
+    # being an error
     peek_buffer = reader.peek(2)[:2]
-    if len(peek_buffer) != 2:
-        raise ValueError("Invalid input: not enough data to determine if gzipped")
 
     if peek_buffer == b'\x1f\x8b':
         stream = io.BufferedReader(gzip.GzipFile(fileobj=reader))
@@ -143,10 +242,15 @@ def unpack_document(reader, writer):
     signature_section_size = 1
 
     if hasSignatures:
-        # Read and discard the first line (HEADER_PREFIX)
+        # Read the version line and refuse formats we do not understand, so
+        # that a future incompatible version is rejected rather than misread
+        # as this one
         line = stream.readline()
         if not line:
             raise ValueError("Failed to read HeaderPrefix line")
+        version = line[len(footer_bytes):].rstrip(b'\n').decode('utf-8')
+        if version != HEADER_VERSION:
+            raise ValueError("Unsupported format version '{0}', expected '{1}'".format(version, HEADER_VERSION))
         signature_section_size += len(line) + 1  # +1 for the newline character
 
         # Read signatures
@@ -200,7 +304,7 @@ def write_signatures(writer, headers):
     sig_len = 1
 
     # Write out delimiter + signatures
-    line = "{0}0.1\n".format(HEADER_PREFIX).encode('utf-8')
+    line = "{0}{1}\n".format(HEADER_PREFIX, HEADER_VERSION).encode('utf-8')
     sig_len += len(line)
     writer.write(line)
 
@@ -218,15 +322,16 @@ def write_signatures(writer, headers):
 
 def cmd_sign(args):
     try:
-        # Open input file
+        # Open input file, for writing as well only when signing in place
         with ExitStack() as stack:
-            input_file = sys.stdin.buffer if args.input_file == '-' else stack.enter_context(open(args.input_file, 'r+b'))
+            input_mode = 'r+b' if args.output_file == args.input_file else 'rb'
+            input_file = binary_stream(sys.stdin) if args.input_file == '-' else stack.enter_context(open(args.input_file, input_mode))
             temp_file = stack.enter_context(tempfile.TemporaryFile(mode='w+b'))
 
             # Load private keys
             keys = []
             for key_file in args.keys:
-                keys.extend(load_keys(key_file))
+                keys.extend(load_keys(key_file, private_only=True))
 
             hash_value, headers = unpack_document(TeeReader(input_file, temp_file), NullWriter())
             if headers is None:
@@ -244,19 +349,25 @@ def cmd_sign(args):
                 temp_file.sync()
             temp_file.seek(0)
 
+            # Check the header against a throwaway writer before the output is
+            # opened, so an oversized or malformed header cannot leave a
+            # partial file behind
+            write_signatures(NullWriter(), headers)
+
             # Write out content
             if args.output_file == '-':
-                gzip_writer = stack.enter_context(gzip.GzipFile(filename="", fileobj=sys.stdout.buffer))
+                gzip_writer = stack.enter_context(gzip.GzipFile(filename="", mode="wb", mtime=0, fileobj=binary_stream(sys.stdout)))
             elif args.output_file == args.input_file:
                 input_file.seek(0)
                 input_file.truncate()
-                gzip_writer = stack.enter_context(gzip.GzipFile(filename="", fileobj=input_file))
+                gzip_writer = stack.enter_context(gzip.GzipFile(filename="", mode="wb", mtime=0, fileobj=input_file))
             else:
                 output_file = stack.enter_context(open(args.output_file, 'wb'))
-                gzip_writer = stack.enter_context(gzip.GzipFile(filename="", fileobj=output_file))
+                gzip_writer = stack.enter_context(gzip.GzipFile(filename="", mode="wb", mtime=0, fileobj=output_file))
             write_signatures(gzip_writer, headers)
             unpack_document(temp_file, gzip_writer)
         print("Document signed successfully", file=sys.stderr)
+        return 0
     
     except Exception as e:
         print("Error in sign command: {}".format(e), file=sys.stderr)
@@ -273,39 +384,45 @@ def cmd_verify(args):
 
     try:
         with ExitStack() as stack:
-            # Open input, output, and temporary file
-            input_file = sys.stdin.buffer if args.input_file == '-' else stack.enter_context(open(args.input_file, 'rb'))
-            output_file = sys.stdout.buffer if args.output_file == '-' else stack.enter_context(open(args.output_file, 'wb'))
+            # Open input and temporary file. The output is deliberately not
+            # opened yet, see below
+            input_file = binary_stream(sys.stdin) if args.input_file == '-' else stack.enter_context(open(args.input_file, 'rb'))
             temp_file = stack.enter_context(tempfile.TemporaryFile(mode='w+b'))
 
-                hash_value, signatures = unpack_document(input_file, temp_file)
+            hash_value, signatures = unpack_document(input_file, temp_file)
 
-                if signatures is None:
-                    print("No signatures found", file=sys.stderr)
-                    return 1
+            if signatures is None:
+                print("No signatures found", file=sys.stderr)
+                return 1
 
-                for key in keys:
-                    fingerprint = key.fingerprint()
-                    print(fingerprint, file=sys.stderr)
-                    if fingerprint in signatures:
-                        signature = b64decode(signatures[fingerprint])
-                        if key.verify(hash_value, signature):
-                            print("Valid signature from key with fingerprint: {}".format(fingerprint), file=sys.stderr)
-                            break
-                        else:
-                            print("Invalid signature from key with fingerprint: {}".format(fingerprint), file=sys.stderr)
-                else:
-                    print("No valid signatures found", file=sys.stderr)
-                    return 1
+            for key in keys:
+                fingerprint = key.fingerprint()
+                print(fingerprint, file=sys.stderr)
+                if fingerprint in signatures:
+                    signature = b64decode(signatures[fingerprint])
+                    if key.verify(hash_value, signature):
+                        print("Valid signature from key with fingerprint: {}".format(fingerprint), file=sys.stderr)
+                        break
+                    else:
+                        print("Invalid signature from key with fingerprint: {}".format(fingerprint), file=sys.stderr)
+            else:
+                print("No valid signatures found", file=sys.stderr)
+                return 1
 
-                # Seek to the beginning of the temporary file
-                temp_file.seek(0)
+            # Seek to the beginning of the temporary file
+            temp_file.seek(0)
 
-                # Copy the temporary file to the output file
-                shutil.copyfileobj(temp_file, output_file, 8192)  # Copy in 8KB chunks
+            # Only now open the output. Opening it any earlier would create,
+            # and truncate, a file that a failed verification should leave
+            # untouched. This also makes verifying in place work, since the
+            # input has already been read in full
+            output_file = binary_stream(sys.stdout) if args.output_file == '-' else stack.enter_context(open(args.output_file, 'wb'))
 
-                print("Document verified successfully", file=sys.stderr)
-                return 0
+            # Copy the temporary file to the output file
+            shutil.copyfileobj(temp_file, output_file, 8192)  # Copy in 8KB chunks
+
+            print("Document verified successfully", file=sys.stderr)
+            return 0
 
     except Exception as e:
         print("Error during verification: {}".format(e), file=sys.stderr)
@@ -314,15 +431,16 @@ def cmd_verify(args):
 def cmd_inspect(args):
     try:
         with ExitStack() as stack:
-            input_file = sys.stdin.buffer if args.input_file == '-' else stack.enter_context(open(args.input_file, 'rb'))
+            input_file = binary_stream(sys.stdin) if args.input_file == '-' else stack.enter_context(open(args.input_file, 'rb'))
             
             _, headers = unpack_document(input_file, NullWriter())
-            
+
+            # An unsigned document is valid input, it simply has no headers to
+            # report, so there is nothing to print and nothing to fail on
             if headers is None:
-                print("Not a sig file", file=sys.stderr)
-                return 1
-            
-            max_len = max(len(key) for key in headers.keys())
+                headers = {}
+
+            max_len = max((len(key) for key in headers.keys()), default=0)
             # Sort the headers
             for key, val in sorted(headers.items()):
                 print("{:<{}} {}".format(key, max_len, val))
@@ -376,9 +494,17 @@ def cmd_fetch(args):
                 print("Unexpected status code: {}".format(response.status_code), file=sys.stderr)
                 return 1
 
+            # Record the new ETag as soon as the response is accepted. It
+            # describes what the server served, not whether the document
+            # turned out to be one we trust
+            if etag_file and 'ETag' in response.headers:
+                etag_file.seek(0)
+                etag_file.write(response.headers['ETag'])
+                etag_file.truncate()
+
             # Verify and unpack the document
             temp_file = stack.enter_context(tempfile.TemporaryFile(mode='w+b'))
-            hash_value, signatures = unpack_document(response.raw, temp_file)
+            hash_value, signatures = unpack_document(ChunkReader(response.iter_content(8192)), temp_file)
 
             if signatures is None:
                 print("No signatures found", file=sys.stderr)
@@ -399,14 +525,8 @@ def cmd_fetch(args):
 
             # Write the content to the output file
             temp_file.seek(0)
-            output_file = sys.stdout.buffer if args.output_file == '-' else stack.enter_context(open(args.output_file, 'wb'))
+            output_file = binary_stream(sys.stdout) if args.output_file == '-' else stack.enter_context(open(args.output_file, 'wb'))
             shutil.copyfileobj(temp_file, output_file)
-
-            # Update ETag if provided
-            if etag_file and 'ETag' in response.headers:
-                etag_file.seek(0)
-                etag_file.write(response.headers['ETag'])
-                etag_file.truncate()
 
         print("Document fetched and verified successfully", file=sys.stderr)
         return 0
@@ -416,6 +536,12 @@ def cmd_fetch(args):
         return 1
 
 def main(args=None):
+    # Emit bare newlines on every platform. Python would otherwise translate
+    # them to CRLF on Windows, which puts the text output of inspect and
+    # fingerprint out of step with the rest of the tooling
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(newline="\n")
+
     parser = argparse.ArgumentParser(description="Signature tool for signing, verifying, inspecting, and fetching documents with cryptographic signatures.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 

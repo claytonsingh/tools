@@ -1,6 +1,6 @@
 module github.com/claytonsingh/tools/sig
 
-go 1.20
+go 1.27
 
 require (
 	github.com/claytonsingh/golib/peekbuffer v0.0.0-20240914221406-25ee94ec4aed

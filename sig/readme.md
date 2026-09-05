@@ -1,6 +1,6 @@
 # Sig
 
-Sig is a robust command-line utility written in Go for signing, verifying, inspecting, and fetching signed documents. Leveraging Ed25519 cryptography, Sig ensures the integrity and authenticity of your documents through a simple and efficient workflow.
+Sig is a robust command-line utility written in Go for signing, verifying, inspecting, and fetching signed documents. Leveraging Ed25519, ML-DSA (FIPS 204), and RSA cryptography, Sig ensures the integrity and authenticity of your documents through a simple and efficient workflow.
 
 **Disclaimer:** Always ensure you protect your private keys and handle cryptographic operations securely. Use it responsibly to maintain the security and integrity of your documents.
 
@@ -29,7 +29,7 @@ Sig is a robust command-line utility written in Go for signing, verifying, inspe
 
 ### Benefits
 
-- **Security**: Sig utalizes Ed25519 signature system that provides strong security guarantees.
+- **Security**: Sig uses Ed25519, ML-DSA (FIPS 204), and RSA signatures.
 - **Simplicity**: Straightforward command-line interface for signing and verification tasks.
 - **Flexibility**: Supports both gzipped and non-gzipped input formats.
 - **Efficiency**: ETag support minimizes unnecessary downloads when fetching documents.
@@ -39,7 +39,7 @@ Sig is a robust command-line utility written in Go for signing, verifying, inspe
 
 ## Installation
 
-Ensure you have [Go](https://golang.org/dl/) installed (version 1.20 or later).
+Ensure you have [Go](https://golang.org/dl/) installed (version 1.27 or later). The Python implementation requires `cryptography` 47 or later.
 
 ```bash
 git clone https://github.com:claytonsingh/tools.git
@@ -61,11 +61,17 @@ Though in the examples below the document is just text, Sig can sign any file ty
 
 ### Generating Keys
 
-Before using Sig, you need to generate a key pair. Use the following OpenSSL commands to generate Ed25519 private and public keys:
+Before using Sig, you need to generate a key pair. Use OpenSSL to generate Ed25519, RSA, or ML-DSA (OpenSSL 3.5+) keys:
 
 ```bash
-# Generate a private key
+# Generate an Ed25519 private key
 openssl genpkey -algorithm ed25519 -out private_key.pem
+
+# Generate an RSA private key
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out private_key.pem
+
+# Generate an ML-DSA private key (ML-DSA-44, ML-DSA-65, or ML-DSA-87)
+openssl genpkey -algorithm ML-DSA-44 -out private_key.pem
 
 # Generate the public key from the private key
 openssl pkey -in private_key.pem -out public_key.pem -pubout
@@ -185,7 +191,7 @@ The signature section is human readable and can be easily inspected and modified
 
 Most pairs are `[fingerprint]:[signature]` raw base64 encoded. Metadata pairs start with an exclimation mark and may be added by sig or other programs.
 
-`!hash-sha256:[hash]` is used as a checksum and compared against the hash of the document content.
+`!hash-sha512:[hash]` is used as a checksum and compared against the hash of the document content.
 
 ### Structure
 
@@ -203,9 +209,37 @@ sig-0.1\n
 
 - **Document Content**: The original data being signed.
 - **Signature Section**: Starts with `sig-0.1` indicating the format version.
-- **Fingerprints**: 20-byte base64-encoded strings derived from public keys.
-- **Signatures**: Base64-encoded Ed25519 signatures.
-- **Capacity**: Supports up to 1213 signatures within the 128 KB limit.
+- **Fingerprints**: 20-character base64-encoded strings derived from public keys.
+- **Signatures**: Base64-encoded Ed25519, ML-DSA, or RSA signatures.
+- **Capacity**: The header section is limited to 128 KB. About 1213 Ed25519 signatures fit; RSA-2048 signatures are larger; ML-DSA signatures are larger still (roughly 40 ML-DSA-44 or 20 ML-DSA-87 signatures).
+
+## Exit Codes
+
+| Code | Meaning |
+| ---- | ------- |
+| 0 | Success |
+| 1 | Error, including a document that could not be read or had no matching signature |
+| 2 | Argument error |
+| 3 | Content not modified, only from `fetch --etag` |
+
+A failed run does not create or modify the output file. Once output has begun the destination may be a pipe, so a failure part way through a write cannot be undone; every error sig can detect is checked before the output is opened.
+
+## Testing
+
+There are two implementations, `sig.go` and `sig.py`, and they are held to the same contract: for a given input, both produce the same exit code, the same stdout, and the same files in the working directory. Stderr is not part of that contract.
+
+The CLI test plan lives in [test/cases](test/cases) and is shared. Each implementation runs it against itself, so both suites passing is what proves the two agree. See [test/cases/README.md](test/cases/README.md) for the schema.
+
+```sh
+# Go: unit tests plus the shared plan
+go test ./...
+
+# Python: the shared plan
+pip install -r test/requirements.txt
+pytest conformance_test.py
+```
+
+The `fetch` cases need network access to github.com and fail rather than skip without it.
 
 ## Contributing
 

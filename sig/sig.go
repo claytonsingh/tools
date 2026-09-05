@@ -5,10 +5,13 @@ import (
 	"compress/gzip"
 	"crypto"
 	"crypto/ed25519"
+	"crypto/mldsa"
+	"crypto/rsa"
 	"crypto/sha512"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,7 +46,7 @@ Details:
 - The signature section starts with "sig-0.1" to indicate the format version.
 - Each subsequent line contains a keys value pair separated by a colon.
 - Fingerprints are 20-character base64-encoded strings (120 bits) derived from the public key.
-- Signatures are base64-encoded Ed25519 signatures.
+- Signatures are base64-encoded Ed25519, ML-DSA, or RSA signatures.
 - A blank line separates the signature section from the document content.
 - The document content follows the blank line and continues until the end of the file.
 */
@@ -72,6 +75,7 @@ Details:
 // sig --fetch='http://example.com/file.tar.sig'    --etag=tags/file test.pub > new.tar; echo $?
 
 const HeaderPrefix = "sig-"
+const HeaderVersion = "0.1"
 const MaxHeaderSize = 1024 * 128
 const FingerprintSize = 15 // 15 bytes = 120 bits
 
@@ -132,7 +136,13 @@ func run(args []string) int {
 	var opts opts
 	p := flags.NewParser(&opts, flags.Default)
 	if _, err := p.ParseArgs(args); err != nil {
-		return 1
+		// An explicit --help is a successful run; anything else the parser
+		// rejects is a usage error
+		var flagsErr *flags.Error
+		if errors.As(err, &flagsErr) && flagsErr.Type == flags.ErrHelp {
+			return 0
+		}
+		return 2
 	}
 
 	switch p.Active.Name {
@@ -144,8 +154,13 @@ func run(args []string) int {
 			opts.CmdFetch.FileOut,
 			opts.CmdFetch.ETag,
 		); err != nil {
-			fmt.Fprintf(os.Stderr, "Error in fetch command: %v\n", err)
-			return 1
+			if err == ErrNotModified {
+				fmt.Fprintln(os.Stderr, "Content not modified")
+				return 3
+			} else {
+				fmt.Fprintf(os.Stderr, "Error in fetch command: %v\n", err)
+				return 1
+			}
 		}
 	case "fingerprint":
 		{
@@ -201,7 +216,7 @@ func cmdSign(opts opts) error {
 	var fi, ft *os.File
 
 	// Open for reading (and sometimes writing if in and out are the same)
-	if d, err := openInput(opts.CmdSign.FileIn, &fi); err != nil {
+	if d, err := openInput(opts.CmdSign.FileIn, opts.CmdSign.FileOut == opts.CmdSign.FileIn, &fi); err != nil {
 		return fmt.Errorf("failed to open input file: %w", err)
 	} else {
 		defer d()
@@ -233,6 +248,12 @@ func cmdSign(opts opts) error {
 		headers[f] = s
 	}
 
+	headers["!hash-sha512"] = base64.RawStdEncoding.EncodeToString(hash)
+
+	if err := WriteHeader(io.Discard, headers); err != nil {
+		return fmt.Errorf("failed to write header: %w", err)
+	}
+
 	// Write out content
 	if err := ft.Sync(); err != nil {
 		return fmt.Errorf("failed to sync temporary file: %w", err)
@@ -244,8 +265,9 @@ func cmdSign(opts opts) error {
 	writeOutput := func(out io.Writer) error {
 		tmp := gzip.NewWriter(out)
 		defer tmp.Close()
-		headers["!hash-sha512"] = base64.RawStdEncoding.EncodeToString(hash)
-		WriteHeader(tmp, headers)
+		if err := WriteHeader(tmp, headers); err != nil {
+			return fmt.Errorf("failed to write header: %w", err)
+		}
 		if _, _, _, err := UnpackDocument(ft, tmp); err != nil {
 			return fmt.Errorf("failed to unpack document: %w", err)
 		}
@@ -284,7 +306,7 @@ func cmdSign(opts opts) error {
 
 func cmdInspect(opts opts) error {
 	var fi *os.File
-	if d, err := openInput(opts.CmdInspect.FileIn, &fi); err != nil {
+	if d, err := openInput(opts.CmdInspect.FileIn, false, &fi); err != nil {
 		return fmt.Errorf("failed to open input file: %w", err)
 	} else {
 		defer d()
@@ -347,7 +369,7 @@ func cmdVerify(isFetch bool, keys []string, inputSource string, outputDest strin
 		reader = resp.Body
 	} else {
 		// Verify logic
-		if d, err := openInput(inputSource, &fi); err != nil {
+		if d, err := openInput(inputSource, outputDest == inputSource, &fi); err != nil {
 			return fmt.Errorf("failed to open input file: %w", err)
 		} else {
 			defer d()
@@ -457,20 +479,22 @@ func UnpackDocument(reader io.Reader, writer io.Writer) ([]byte, map[string]stri
 
 	// Check if input is gzip and set up appropriate reader
 	buf, err := pReader.Peek(2)
-	if err != nil || len(buf) != 2 {
+	if err != nil {
 		return nil, nil, false, fmt.Errorf("failed to peek input: %w", err)
-	} else {
-		if buf[0] == 0x1f && buf[1] == 0x8b {
-			var gzReader *gzip.Reader
-			gzReader, err = gzip.NewReader(pReader)
-			if err != nil {
-				return nil, nil, false, fmt.Errorf("failed to create gzip reader: %w", err)
-			}
-			defer gzReader.Close()
-			stream = peekbuffer.NewPeekBuffer(gzReader)
-		} else {
-			stream = pReader
+	}
+
+	if len(buf) == 2 && buf[0] == 0x1f && buf[1] == 0x8b {
+		// Gzip, create a gzip reader
+		var gzReader *gzip.Reader
+		gzReader, err = gzip.NewReader(pReader)
+		if err != nil {
+			return nil, nil, false, fmt.Errorf("failed to create gzip reader: %w", err)
 		}
+		defer gzReader.Close()
+		stream = peekbuffer.NewPeekBuffer(gzReader)
+	} else {
+		// Not gzip, use the original reader
+		stream = pReader
 	}
 
 	// Helper function to read a line
@@ -504,10 +528,15 @@ func UnpackDocument(reader io.Reader, writer io.Writer) ([]byte, map[string]stri
 
 	if hasSignatures {
 		{
-			// Read and discard the first line (FooterPrefix)
+			// Read the version line and refuse formats we do not understand,
+			// so that a future incompatible version is rejected rather than
+			// misread as this one
 			line, err := readLine()
 			if err != nil {
 				return nil, nil, false, fmt.Errorf("failed to read FooterPrefix line: %w", err)
+			}
+			if version := string(line[len(HeaderPrefix):]); version != HeaderVersion {
+				return nil, nil, false, fmt.Errorf("unsupported format version %q, expected %q", version, HeaderVersion)
 			}
 
 			signatureSectionSize += len(line) + 1 // +1 for the newline character
@@ -569,14 +598,20 @@ func WriteHeader(w io.Writer, headers map[string]string) error {
 	sigLen := 0
 
 	// Write signature header
-	s := []byte(HeaderPrefix + "0.1\n")
+	s := []byte(HeaderPrefix + HeaderVersion + "\n")
 	sigLen += len(s)
 	if _, err := w.Write(s); err != nil {
 		return fmt.Errorf("failed to write signature header: %w", err)
 	}
 
-	// Write signatures
-	for header, value := range headers {
+	// Write signatures in key order
+	keys := make([]string, 0, len(headers))
+	for header := range headers {
+		keys = append(keys, header)
+	}
+	sort.Strings(keys)
+	for _, header := range keys {
+		value := headers[header]
 		if strings.Contains(header, ":") || strings.Contains(header, "\n") || strings.Contains(value, ":") || strings.Contains(value, "\n") {
 			return fmt.Errorf("header contains invalid characters: %q %q", header, value)
 		}
@@ -724,7 +759,10 @@ func loadPubKeys(b []byte) ([]CryptoKey, error) {
 	}
 }
 
-func openInput(file string, fp **os.File) (func() error, error) {
+// openInput opens the input document. Write access is only requested when the
+// caller intends to rewrite the file in place, so that reading a document does
+// not require permission to modify it.
+func openInput(file string, writable bool, fp **os.File) (func() error, error) {
 	if file == "-" {
 		*fp = os.Stdin
 		return func() error {
@@ -732,7 +770,11 @@ func openInput(file string, fp **os.File) (func() error, error) {
 		}, nil
 	} else {
 		var err error
-		f, err := os.OpenFile(file, os.O_RDWR, 0666)
+		mode := os.O_RDONLY
+		if writable {
+			mode = os.O_RDWR
+		}
+		f, err := os.OpenFile(file, mode, 0666)
 		if err != nil {
 			return nil, err
 		}
@@ -897,19 +939,30 @@ func NewCryptoKey(key any) (CryptoKey, error) {
 			publicKey: key,
 			isPrivate: false,
 		}, nil
-	/*
-		case *rsa.PrivateKey:
-			return &rsaKey{
-				privateKey: key,
-				publicKey:  &key.PublicKey,
-			}, nil
-		case *rsa.PublicKey:
-			return &rsaKey{
-				publicKey: key,
-			}, nil
-	*/
+	case *mldsa.PrivateKey:
+		return &mldsaKey{
+			privateKey: key,
+			publicKey:  key.PublicKey(),
+			isPrivate:  true,
+		}, nil
+	case *mldsa.PublicKey:
+		return &mldsaKey{
+			publicKey: key,
+			isPrivate: false,
+		}, nil
+	case *rsa.PrivateKey:
+		return &rsaKey{
+			privateKey: key,
+			publicKey:  &key.PublicKey,
+			isPrivate:  true,
+		}, nil
+	case *rsa.PublicKey:
+		return &rsaKey{
+			publicKey: key,
+			isPrivate: false,
+		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported key type")
+		return nil, fmt.Errorf("unsupported key type %T", key)
 	}
 }
 
@@ -955,15 +1008,55 @@ func (this *ed25519Key) IsPrivate() bool {
 	return this.isPrivate
 }
 
-/*
+type mldsaKey struct {
+	privateKey *mldsa.PrivateKey
+	publicKey  *mldsa.PublicKey
+	isPrivate  bool
+}
+
+func (this *mldsaKey) Sign(hash []byte) (string, error) {
+	if !this.isPrivate {
+		return "", fmt.Errorf("cannot sign: no private key available")
+	}
+	signature, err := this.privateKey.Sign(nil, hash, crypto.Hash(0))
+	if err != nil {
+		return "", err
+	}
+	return base64.RawStdEncoding.EncodeToString(signature), nil
+}
+
+func (this *mldsaKey) Verify(hash []byte, signature []byte) error {
+	if this.publicKey == nil {
+		return fmt.Errorf("cannot verify: no public key available")
+	}
+	return mldsa.Verify(this.publicKey, hash, signature, nil)
+}
+
+func (this *mldsaKey) Fingerprint() string {
+	if this.publicKey == nil {
+		return ""
+	}
+	b, err := x509.MarshalPKIXPublicKey(this.publicKey)
+	if err != nil {
+		return ""
+	}
+	h := sha512.New()
+	h.Write(b)
+	return base64.RawStdEncoding.EncodeToString(h.Sum(nil)[0:FingerprintSize])
+}
+
+func (this *mldsaKey) IsPrivate() bool {
+	return this.isPrivate
+}
+
 type rsaKey struct {
-	CryptoKey
 	privateKey *rsa.PrivateKey
 	publicKey  *rsa.PublicKey
+	isPrivate  bool
 }
 
 func (this *rsaKey) Sign(hash []byte) (string, error) {
-	if this.privateKey == nil {
+	if !this.isPrivate {
 		return "", fmt.Errorf("cannot sign: no private key available")
 	}
 	signature, err := rsa.SignPKCS1v15(nil, this.privateKey, crypto.SHA512, hash)
@@ -981,12 +1074,18 @@ func (this *rsaKey) Verify(hash []byte, signature []byte) error {
 }
 
 func (this *rsaKey) Fingerprint() string {
+	if this.publicKey == nil {
+		return ""
+	}
+	b, err := x509.MarshalPKIXPublicKey(this.publicKey)
+	if err != nil {
+		return ""
+	}
 	h := sha512.New()
-	h.Write(x509.MarshalPKCS1PublicKey(this.publicKey))
-	return base64.RawStdEncoding.EncodeToString(h.Sum(nil)[0:FingerprintLength])
+	h.Write(b)
+	return base64.RawStdEncoding.EncodeToString(h.Sum(nil)[0:FingerprintSize])
 }
 
 func (this *rsaKey) IsPrivate() bool {
-	return this.privateKey != nil
+	return this.isPrivate
 }
-*/
