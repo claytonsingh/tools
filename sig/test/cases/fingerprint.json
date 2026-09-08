@@ -1,0 +1,56 @@
+{
+  "group": "fingerprint",
+  "note": "Fingerprints are the first 15 bytes of the SHA-512 of the PKIX SPKI DER, raw base64. A private key reports the fingerprint of its public half, so a key and its pair agree. Files holding several keys report one line each, in file order.",
+  "cases": [
+    {
+      "name": "Fingerprint ED25519 Public Key",
+      "argv": ["fingerprint", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match_text": "cQBQY+x1KQrCLDeTOkrN ed25519_1_pub.pem\n"}
+      ]
+    },
+    {
+      "name": "Fingerprint ED25519 Private Key",
+      "argv": ["fingerprint", "ed25519_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match_text": "cQBQY+x1KQrCLDeTOkrN ed25519_1_key.pem\n"}
+      ]
+    },
+    {
+      "name": "Fingerprint Multiple ED25519 Keys",
+      "note": "ed25519_3 holds both key 1 and key 2, so it reports two lines.",
+      "argv": ["fingerprint", "ed25519_1_key.pem", "ed25519_1_pub.pem", "ed25519_2_key.pem", "ed25519_2_pub.pem", "ed25519_3_key.pem", "ed25519_3_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match_text": "cQBQY+x1KQrCLDeTOkrN ed25519_1_key.pem\ncQBQY+x1KQrCLDeTOkrN ed25519_1_pub.pem\nLRl25NJe/9nhV7ndcoHH ed25519_2_key.pem\nLRl25NJe/9nhV7ndcoHH ed25519_2_pub.pem\ncQBQY+x1KQrCLDeTOkrN ed25519_3_key.pem\nLRl25NJe/9nhV7ndcoHH ed25519_3_key.pem\ncQBQY+x1KQrCLDeTOkrN ed25519_3_pub.pem\nLRl25NJe/9nhV7ndcoHH ed25519_3_pub.pem\n"}
+      ]
+    },
+    {
+      "name": "Fingerprint ML-DSA Keys",
+      "argv": ["fingerprint", "mldsa44_1_key.pem", "mldsa44_1_pub.pem", "mldsa65_1_key.pem", "mldsa65_1_pub.pem", "mldsa87_1_key.pem", "mldsa87_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match_text": "NGWiV1WRjopPlePRyVs/ mldsa44_1_key.pem\nNGWiV1WRjopPlePRyVs/ mldsa44_1_pub.pem\nWveGkG92pDuynRslZ0Hu mldsa65_1_key.pem\nWveGkG92pDuynRslZ0Hu mldsa65_1_pub.pem\nbre+DiNFxZ85hKsg4oQ0 mldsa87_1_key.pem\nbre+DiNFxZ85hKsg4oQ0 mldsa87_1_pub.pem\n"}
+      ]
+    },
+    {
+      "name": "Fingerprint RSA Keys",
+      "argv": ["fingerprint", "rsa-key.pem", "rsa-pub.pem", "rsa-pub2.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match_text": "axypADA4gB5xOPopW0Np rsa-key.pem\naxypADA4gB5xOPopW0Np rsa-pub.pem\nh3P0pacMDf/d97KzH/Ah rsa-pub2.pem\n"}
+      ]
+    },
+    {
+      "name": "Fingerprint Mixed Keys",
+      "note": "One file holding an Ed25519, an ML-DSA-44 and an RSA key reports all three in PEM block order.",
+      "argv": ["fingerprint", "mixed_1_key.pem", "mixed_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match_text": "cQBQY+x1KQrCLDeTOkrN mixed_1_key.pem\nNGWiV1WRjopPlePRyVs/ mixed_1_key.pem\naxypADA4gB5xOPopW0Np mixed_1_key.pem\ncQBQY+x1KQrCLDeTOkrN mixed_1_pub.pem\nNGWiV1WRjopPlePRyVs/ mixed_1_pub.pem\naxypADA4gB5xOPopW0Np mixed_1_pub.pem\n"}
+      ]
+    }
+  ]
+}

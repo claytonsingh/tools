@@ -308,7 +308,9 @@ def write_signatures(writer, headers):
     sig_len += len(line)
     writer.write(line)
 
-    for key, val in headers.items():
+    # Write signatures in key order, matching WriteHeader in sig.go, so that
+    # both implementations emit the same document for the same input
+    for key, val in sorted(headers.items()):
         if ':' in key or '\n' in key or ':' in val or '\n' in val:
             raise ValueError("Invalid characters in header: {}: {}".format(key, val))
         line = "{}:{}\n".format(key, val).encode('utf-8')

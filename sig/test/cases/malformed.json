@@ -1,0 +1,92 @@
+{
+  "group": "malformed",
+  "note": "Header sections that are damaged rather than merely unverifiable. A missing or undecodable hash header and an unknown format version are all fatal; a line with no colon is not, because it never reaches the header map.",
+  "cases": [
+    {
+      "name": "Verify Missing Hash Header",
+      "argv": ["verify", "--if", "test_nohash.txt.sig", "--of", "nohash.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "nohash.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Inspect Missing Hash Header",
+      "note": "Inspect reads the same header section, so it fails the same way rather than reporting a document it cannot validate.",
+      "argv": ["inspect", "--if", "test_nohash.txt.sig"],
+      "exit": 1,
+      "assert": [
+        {"target": "stdout", "match_text": ""}
+      ]
+    },
+    {
+      "name": "Verify Non Base64 Hash Header",
+      "argv": ["verify", "--if", "test_badhash.txt.sig", "--of", "badhash.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "badhash.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Header Line Without Colon",
+      "note": "A header line with no colon never reaches the header map, so it is skipped and the document still verifies.",
+      "argv": ["verify", "--if", "test_nocolon.txt.sig", "--of", "nocolon.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "nocolon.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Inspect Header Line Without Colon",
+      "note": "The skipped line is absent from the report, which is why this matches the plain single signature output.",
+      "argv": ["inspect", "--if", "test_nocolon.txt.sig"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_single.txt"}
+      ]
+    },
+    {
+      "name": "Verify Unknown Format Version",
+      "note": "A document declaring a version this build does not implement is refused rather than parsed as 0.1.",
+      "argv": ["verify", "--if", "test_version99.txt.sig", "--of", "version99.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "version99.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Inspect Unknown Format Version",
+      "argv": ["inspect", "--if", "test_version99.txt.sig"],
+      "exit": 1,
+      "assert": [
+        {"target": "stdout", "match_text": ""}
+      ]
+    },
+    {
+      "name": "Sign Unknown Format Version",
+      "note": "Re-signing reads the input first, so the unknown version is refused before any output is produced.",
+      "argv": ["sign", "--if", "test_version99.txt.sig", "--of", "version99.sig.gz", "ed25519_2_key.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "version99.sig.gz", "exists": false}
+      ]
+    },
+    {
+      "name": "Sign Onto Header With No Colon Line",
+      "argv": ["sign", "--if", "test_nocolon.txt.sig", "--of", "nocolon.sig.gz", "ed25519_2_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "nocolon.sig.gz", "match": "signed_nocolon.txt.sig"}
+      ]
+    },
+    {
+      "name": "Inspect Signed Onto Header With No Colon Line",
+      "note": "The line without a colon never entered the header map, so re-signing drops it.",
+      "argv": ["inspect", "--if", "nocolon.sig.gz"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_nocolon_signed.txt"}
+      ]
+    }
+  ]
+}

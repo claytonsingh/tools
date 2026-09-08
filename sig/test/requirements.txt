@@ -1,0 +1,7 @@
+# Runtime dependencies of sig.py. cryptography 46 is the first release with
+# ML-DSA support, which sig.py imports unconditionally.
+cryptography>=46.0.0
+requests>=2.31.0
+
+# Only needed to run the shared conformance plan, not to run sig.py itself.
+pytest>=7.0.0

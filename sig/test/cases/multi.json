@@ -1,0 +1,71 @@
+{
+  "group": "multi",
+  "note": "A committed document signed by one key of every supported algorithm. Any single matching public key is enough to verify it, and a key that signed nothing is not. Its signatures are committed rather than freshly generated, so even the ML-DSA ones are fixed and the inspect reference needs no wildcards.",
+  "cases": [
+    {
+      "name": "Inspect Multi",
+      "argv": ["inspect", "--if", "test_multi.txt.sig"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_multi.txt"}
+      ]
+    },
+    {
+      "name": "Verify Multi With Ed25519 Public Key",
+      "argv": ["verify", "--if", "test_multi.txt.sig", "--of", "multi-ed25519.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "multi-ed25519.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Multi With ML-DSA-44 Public Key",
+      "argv": ["verify", "--if", "test_multi.txt.sig", "--of", "multi-mldsa44.txt", "mldsa44_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "multi-mldsa44.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Multi With ML-DSA-65 Public Key",
+      "argv": ["verify", "--if", "test_multi.txt.sig", "--of", "multi-mldsa65.txt", "mldsa65_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "multi-mldsa65.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Multi With ML-DSA-87 Public Key",
+      "argv": ["verify", "--if", "test_multi.txt.sig", "--of", "multi-mldsa87.txt", "mldsa87_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "multi-mldsa87.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Multi With RSA Public Key",
+      "argv": ["verify", "--if", "test_multi.txt.sig", "--of", "multi-rsa.txt", "rsa-pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "multi-rsa.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Multi With Mixed Public Key",
+      "note": "The first key in the file that has a signature wins, and the run stops there.",
+      "argv": ["verify", "--if", "test_multi.txt.sig", "--of", "multi-mixed.txt", "mixed_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "multi-mixed.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Multi With Incorrect Public Key",
+      "argv": ["verify", "--if", "test_multi.txt.sig", "--of", "multi-wrong.txt", "rsa-pub2.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "multi-wrong.txt", "exists": false}
+      ]
+    }
+  ]
+}

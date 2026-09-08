@@ -1,0 +1,49 @@
+{
+  "group": "args",
+  "note": "Argument parsing. Usage errors exit 2 and an explicit --help exits 0. The help text itself is not compared, only that it names every command, because go-flags and argparse lay it out differently.",
+  "cases": [
+    {
+      "name": "No Arguments",
+      "argv": [],
+      "exit": 2
+    },
+    {
+      "name": "Unknown Command",
+      "argv": ["bogus"],
+      "exit": 2
+    },
+    {
+      "name": "Verify Without Key Argument",
+      "argv": ["verify", "--if", "test.txt.sig"],
+      "exit": 2
+    },
+    {
+      "name": "Sign Without Key Argument",
+      "argv": ["sign", "--if", "test.txt"],
+      "exit": 2
+    },
+    {
+      "name": "Fingerprint Without Key Argument",
+      "argv": ["fingerprint"],
+      "exit": 2
+    },
+    {
+      "name": "Unknown Flag",
+      "argv": ["inspect", "--nope"],
+      "exit": 2
+    },
+    {
+      "name": "Help",
+      "note": "An explicit help request is a successful run, and the listing goes to stdout.",
+      "argv": ["--help"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "contains": "fetch"},
+        {"target": "stdout", "contains": "fingerprint"},
+        {"target": "stdout", "contains": "inspect"},
+        {"target": "stdout", "contains": "sign"},
+        {"target": "stdout", "contains": "verify"}
+      ]
+    }
+  ]
+}

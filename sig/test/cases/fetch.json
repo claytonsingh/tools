@@ -1,0 +1,52 @@
+{
+  "group": "fetch",
+  "note": "Fetch against the committed fixtures as served by github, so neither runner needs a local server. Network access is assumed: these cases fail rather than skip when it is unavailable. The ETag is chosen by the server and cannot be pinned here, so the round trip is what gets asserted instead. The cases run in order and share a sandbox, which is what makes that possible.",
+  "cases": [
+    {
+      "name": "Fetch Correct Public Key",
+      "argv": ["fetch", "https://github.com/claytonsingh/tools/raw/refs/heads/master/sig/test/test.txt.sig.gz", "--of", "remote_fetched.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "remote_fetched.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Fetch Incorrect Public Key",
+      "note": "A remote document that does not verify must not be written out, the same as a local one.",
+      "argv": ["fetch", "https://github.com/claytonsingh/tools/raw/refs/heads/master/sig/test/test.txt.sig.gz", "--of", "remote_wrong.txt", "ed25519_2_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "remote_wrong.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Fetch Unsigned Document",
+      "note": "The plain document has no header section, so there is no signature to match.",
+      "argv": ["fetch", "https://github.com/claytonsingh/tools/raw/refs/heads/master/sig/test/test.txt", "--of", "remote_unsigned.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "remote_unsigned.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Fetch Writing ETag",
+      "note": "The ETag file is created and filled from the response. Its value is server chosen, so {any} is all that can be asserted about it.",
+      "argv": ["fetch", "https://github.com/claytonsingh/tools/raw/refs/heads/master/sig/test/test.txt.sig.gz", "--etag", "etag.txt", "--of", "etag-doc.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "etag.txt", "match_text": "{any}"},
+        {"target": "etag-doc.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Fetch Not Modified",
+      "note": "The same request with the ETag from the previous case is answered 304, which is exit code 3. Nothing is refetched, so both files still hold what the previous case left there.",
+      "argv": ["fetch", "https://github.com/claytonsingh/tools/raw/refs/heads/master/sig/test/test.txt.sig.gz", "--etag", "etag.txt", "--of", "etag-doc.txt", "ed25519_1_pub.pem"],
+      "exit": 3,
+      "assert": [
+        {"target": "etag.txt", "match_text": "{any}"},
+        {"target": "etag-doc.txt", "match": "test.txt"}
+      ]
+    }
+  ]
+}

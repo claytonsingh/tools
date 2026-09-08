@@ -1,0 +1,83 @@
+{
+  "group": "shortinput",
+  "note": "Documents shorter than the two byte gzip magic that the reader peeks for before it does anything else. A short read is not an error: such a document cannot be gzip, so it falls through to the plain stream path and is treated as an ordinary unsigned document. Also covers a gzip header that is present but truncated, which is an error.",
+  "cases": [
+    {
+      "name": "Inspect Empty Input",
+      "note": "An empty document is a valid unsigned document, so there is nothing to report and nothing to fail on.",
+      "argv": ["inspect", "--if", "test_empty.txt.sig"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match_text": ""}
+      ]
+    },
+    {
+      "name": "Verify Empty Input",
+      "note": "Valid, but it carries no signature for the key to match.",
+      "argv": ["verify", "--if", "test_empty.txt.sig", "--of", "empty.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "empty.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify One Byte Input",
+      "argv": ["verify", "--if", "test_onebyte.txt.sig", "--of", "onebyte.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "onebyte.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Sign Empty Input",
+      "note": "An empty body still gets a hash header and a signature over it.",
+      "argv": ["sign", "--if", "test_empty.txt.sig", "--of", "empty.sig.gz", "ed25519_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "empty.sig.gz", "match": "signed_empty.txt.sig"}
+      ]
+    },
+    {
+      "name": "Verify Signed Empty Input",
+      "note": "Signing then verifying an empty document round trips back to nothing, which is the point: the short input path is not a special case, it is the plain path.",
+      "argv": ["verify", "--if", "empty.sig.gz", "--of", "empty-out.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "empty-out.txt", "match": "test_empty.txt.sig"}
+      ]
+    },
+    {
+      "name": "Sign One Byte Input",
+      "argv": ["sign", "--if", "test_onebyte.txt.sig", "--of", "onebyte.sig.gz", "ed25519_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "onebyte.sig.gz", "match": "signed_onebyte.txt.sig"}
+      ]
+    },
+    {
+      "name": "Verify Signed One Byte Input",
+      "argv": ["verify", "--if", "onebyte.sig.gz", "--of", "onebyte-out.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "onebyte-out.txt", "match": "test_onebyte.txt.sig"}
+      ]
+    },
+    {
+      "name": "Verify Truncated Gzip",
+      "note": "The magic is there but the stream is cut short, so this is a real failure rather than a plain document.",
+      "argv": ["verify", "--if", "test_badgzip.txt.sig.gz", "--of", "badgzip.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "badgzip.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Inspect Truncated Gzip",
+      "argv": ["inspect", "--if", "test_badgzip.txt.sig.gz"],
+      "exit": 1,
+      "assert": [
+        {"target": "stdout", "match_text": ""}
+      ]
+    }
+  ]
+}

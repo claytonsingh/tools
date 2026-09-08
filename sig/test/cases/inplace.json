@@ -1,0 +1,57 @@
+{
+  "group": "inplace",
+  "note": "Writing the output over the input file. This is the one case that needs write access to the input, and the input has to be fully read before the destination is truncated. Every case here signs its own copy first, so the file being rewritten is one this group produced.",
+  "cases": [
+    {
+      "name": "Sign For In Place Append",
+      "argv": ["sign", "--if", "test.txt", "--of", "inplace.sig.gz", "ed25519_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "inplace.sig.gz", "match": "test.txt.sig"}
+      ]
+    },
+    {
+      "name": "Sign In Place Append RSA",
+      "note": "Adding a second signature to a document by rewriting it over itself.",
+      "argv": ["sign", "--if", "inplace.sig.gz", "--of", "inplace.sig.gz", "rsa-key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "inplace.sig.gz", "match": "signed_ed25519_rsa.txt.sig"}
+      ]
+    },
+    {
+      "name": "Verify In Place Appended With Ed25519",
+      "note": "The signature that survived the rewrite still verifies.",
+      "argv": ["verify", "--if", "inplace.sig.gz", "--of", "inplace-ed.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "inplace-ed.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify In Place Appended With RSA",
+      "argv": ["verify", "--if", "inplace.sig.gz", "--of", "inplace-rsa.txt", "rsa-pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "inplace-rsa.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Sign For In Place Verify",
+      "argv": ["sign", "--if", "test.txt", "--of", "inplace2.sig.gz", "ed25519_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "inplace2.sig.gz", "match": "test.txt.sig"}
+      ]
+    },
+    {
+      "name": "Verify In Place",
+      "note": "Unpacking over the input replaces the signed document with the document itself.",
+      "argv": ["verify", "--if", "inplace2.sig.gz", "--of", "inplace2.sig.gz", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "inplace2.sig.gz", "match": "test.txt"}
+      ]
+    }
+  ]
+}

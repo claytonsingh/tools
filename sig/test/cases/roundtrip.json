@@ -1,0 +1,229 @@
+{
+  "group": "roundtrip",
+  "note": "Sign, inspect and verify for every supported algorithm, then the same for a key file holding several algorithms and for appending a signature to an already signed document. Ed25519 and RSA PKCS#1 v1.5 are deterministic, so those outputs reproduce a committed document exactly. ML-DSA signing is randomized, so its expected outputs carry a {b64:N} token in place of the signature value, which pins the algorithm by signature size.",
+  "cases": [
+    {
+      "name": "Sign",
+      "argv": ["sign", "--if", "test.txt", "--of", "ed25519.txt.sig.gz", "ed25519_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "ed25519.txt.sig.gz", "match": "test.txt.sig"}
+      ]
+    },
+    {
+      "name": "Sign RSA",
+      "argv": ["sign", "--if", "test.txt", "--of", "rsa.txt.sig.gz", "rsa-key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "rsa.txt.sig.gz", "match": "test_rsa.txt.sig"}
+      ]
+    },
+    {
+      "name": "Inspect RSA",
+      "note": "A 2048 bit modulus yields a 256 byte signature, which is 342 characters of base64.",
+      "argv": ["inspect", "--if", "rsa.txt.sig.gz"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_rsa.txt"}
+      ]
+    },
+    {
+      "name": "Verify RSA Public Key",
+      "argv": ["verify", "--if", "rsa.txt.sig.gz", "--of", "rsa.txt", "rsa-pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "rsa.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify RSA Incorrect Public Key",
+      "argv": ["verify", "--if", "rsa.txt.sig.gz", "--of", "rsa-wrong.txt", "rsa-pub2.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "rsa.txt.sig.gz", "match": "test_rsa.txt.sig"},
+        {"target": "rsa-wrong.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Sign ML-DSA-44",
+      "argv": ["sign", "--if", "test.txt", "--of", "mldsa44.txt.sig.gz", "mldsa44_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "mldsa44.txt.sig.gz", "match": "signed_mldsa44.txt.sig"}
+      ]
+    },
+    {
+      "name": "Inspect ML-DSA-44",
+      "argv": ["inspect", "--if", "mldsa44.txt.sig.gz"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_mldsa44.txt"}
+      ]
+    },
+    {
+      "name": "Verify ML-DSA-44 Public Key",
+      "argv": ["verify", "--if", "mldsa44.txt.sig.gz", "--of", "mldsa44.txt", "mldsa44_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "mldsa44.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify ML-DSA-44 Incorrect Public Key",
+      "note": "A different ML-DSA parameter set is a different key, not a weaker one.",
+      "argv": ["verify", "--if", "mldsa44.txt.sig.gz", "--of", "mldsa44-wrong.txt", "mldsa65_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "mldsa44.txt.sig.gz", "match": "signed_mldsa44.txt.sig"},
+        {"target": "mldsa44-wrong.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Sign ML-DSA-65",
+      "argv": ["sign", "--if", "test.txt", "--of", "mldsa65.txt.sig.gz", "mldsa65_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "mldsa65.txt.sig.gz", "match": "signed_mldsa65.txt.sig"}
+      ]
+    },
+    {
+      "name": "Inspect ML-DSA-65",
+      "argv": ["inspect", "--if", "mldsa65.txt.sig.gz"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_mldsa65.txt"}
+      ]
+    },
+    {
+      "name": "Verify ML-DSA-65 Public Key",
+      "argv": ["verify", "--if", "mldsa65.txt.sig.gz", "--of", "mldsa65.txt", "mldsa65_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "mldsa65.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Sign ML-DSA-87",
+      "argv": ["sign", "--if", "test.txt", "--of", "mldsa87.txt.sig.gz", "mldsa87_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "mldsa87.txt.sig.gz", "match": "signed_mldsa87.txt.sig"}
+      ]
+    },
+    {
+      "name": "Inspect ML-DSA-87",
+      "argv": ["inspect", "--if", "mldsa87.txt.sig.gz"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_mldsa87.txt"}
+      ]
+    },
+    {
+      "name": "Verify ML-DSA-87 Public Key",
+      "argv": ["verify", "--if", "mldsa87.txt.sig.gz", "--of", "mldsa87.txt", "mldsa87_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "mldsa87.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Sign Mixed Keys",
+      "note": "One key file holding an Ed25519, an ML-DSA-44 and an RSA private key signs with all three in one pass, so only the ML-DSA line of the reference is a wildcard.",
+      "argv": ["sign", "--if", "test.txt", "--of", "mixed.txt.sig.gz", "mixed_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "mixed.txt.sig.gz", "match": "signed_mixed.txt.sig"}
+      ]
+    },
+    {
+      "name": "Inspect Mixed Keys",
+      "argv": ["inspect", "--if", "mixed.txt.sig.gz"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_mixed.txt"}
+      ]
+    },
+    {
+      "name": "Verify Mixed Keys With Mixed Pub",
+      "argv": ["verify", "--if", "mixed.txt.sig.gz", "--of", "mixed.txt", "mixed_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "mixed.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Mixed Keys With Ed25519 Pub",
+      "note": "Any one of the three signatures is enough on its own.",
+      "argv": ["verify", "--if", "mixed.txt.sig.gz", "--of", "mixed-ed.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "mixed-ed.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Mixed Keys With ML-DSA Pub",
+      "argv": ["verify", "--if", "mixed.txt.sig.gz", "--of", "mixed-mldsa.txt", "mldsa44_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "mixed-mldsa.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Mixed Keys With RSA Pub",
+      "argv": ["verify", "--if", "mixed.txt.sig.gz", "--of", "mixed-rsa.txt", "rsa-pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "mixed-rsa.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Sign Append RSA To Ed25519",
+      "note": "Signing an already signed document keeps the existing signature and adds one. Both algorithms are deterministic, so the whole document is pinned.",
+      "argv": ["sign", "--if", "test.txt.sig", "--of", "append-rsa.txt.sig.gz", "rsa-key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "append-rsa.txt.sig.gz", "match": "signed_ed25519_rsa.txt.sig"}
+      ]
+    },
+    {
+      "name": "Verify Append RSA With Ed25519 Pub",
+      "argv": ["verify", "--if", "append-rsa.txt.sig.gz", "--of", "append-rsa-ed.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "append-rsa-ed.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Append RSA With RSA Pub",
+      "argv": ["verify", "--if", "append-rsa.txt.sig.gz", "--of", "append-rsa-rsa.txt", "rsa-pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "append-rsa-rsa.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Sign Append ML-DSA To Ed25519",
+      "argv": ["sign", "--if", "test.txt.sig", "--of", "append-mldsa.txt.sig.gz", "mldsa44_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "append-mldsa.txt.sig.gz", "match": "signed_ed25519_mldsa44.txt.sig"}
+      ]
+    },
+    {
+      "name": "Verify Append ML-DSA With Ed25519 Pub",
+      "argv": ["verify", "--if", "append-mldsa.txt.sig.gz", "--of", "append-mldsa-ed.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "append-mldsa-ed.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Append ML-DSA With ML-DSA Pub",
+      "argv": ["verify", "--if", "append-mldsa.txt.sig.gz", "--of", "append-mldsa-ml.txt", "mldsa44_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "append-mldsa-ml.txt", "match": "test.txt"}
+      ]
+    }
+  ]
+}

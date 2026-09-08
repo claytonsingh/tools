@@ -1,0 +1,83 @@
+{
+  "group": "bigheader",
+  "note": "Header sections sized against MaxHeaderSize, 128 KB. The three fixtures are the multi key document padded out with pad-NNNNN headers to an exact section size: 64 bytes under the limit, 4096 bytes under it, and exactly at it, which is refused because the reader compares with >=. The cheapest signature that can be appended is an Ed25519 line at 108 bytes, a 20 character fingerprint, a colon, 86 characters of base64 and a newline, so 64 bytes has no room for one and 4096 does. ed25519_2 signed none of these documents, so re-signing adds a line rather than replacing one, which is what makes the room and overflow cases differ. The expected outputs here are large because the header sections are, and matching them whole is what proves no pad header was silently dropped.",
+  "cases": [
+    {
+      "name": "Inspect Big Header",
+      "note": "Inspect must report exactly the headers the document holds, however many that is.",
+      "argv": ["inspect", "--if", "test_bigheader.txt.sig"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_bigheader.txt"}
+      ]
+    },
+    {
+      "name": "Verify Big Header",
+      "argv": ["verify", "--if", "test_bigheader.txt.sig", "--of", "bigheader.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "bigheader.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Big Header With Room",
+      "note": "Just under the limit, with enough headroom left for one more signature.",
+      "argv": ["verify", "--if", "test_bigheader_room.txt.sig.gz", "--of", "bigheader-room.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "bigheader-room.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Big Header Over Limit",
+      "note": "A document whose header section already exceeds the limit is refused on read.",
+      "argv": ["verify", "--if", "test_bigheader_over.txt.sig.gz", "--of", "bigheader-over.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "bigheader-over.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Inspect Big Header Over Limit",
+      "argv": ["inspect", "--if", "test_bigheader_over.txt.sig.gz"],
+      "exit": 1,
+      "assert": [
+        {"target": "stdout", "match_text": ""}
+      ]
+    },
+    {
+      "name": "Sign Onto Header With Room",
+      "argv": ["sign", "--if", "test_bigheader_room.txt.sig.gz", "--of", "room.sig.gz", "ed25519_2_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "room.sig.gz", "match": "signed_bigheader_room.txt.sig"}
+      ]
+    },
+    {
+      "name": "Inspect Signed Onto Header With Room",
+      "note": "The new signature landed and every pad header round tripped through the header map, so nothing was silently dropped.",
+      "argv": ["inspect", "--if", "room.sig.gz"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_bigheader_room_signed.txt"}
+      ]
+    },
+    {
+      "name": "Verify Signed Onto Header With Room",
+      "argv": ["verify", "--if", "room.sig.gz", "--of", "room.txt", "ed25519_2_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "room.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Sign Onto Full Header",
+      "note": "Adding this signature would push the header section past the limit. The header is validated against a throwaway writer before the output is opened, so the run fails without leaving a partial file behind.",
+      "argv": ["sign", "--if", "test_bigheader.txt.sig", "--of", "overflow.sig.gz", "ed25519_2_key.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "overflow.sig.gz", "exists": false}
+      ]
+    }
+  ]
+}

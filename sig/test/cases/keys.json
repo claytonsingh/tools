@@ -1,0 +1,83 @@
+{
+  "group": "keys",
+  "note": "Key and input arguments that are not usable. A missing file and a PEM block holding something that is not a key are errors. A file holding no PEM blocks at all is not: it yields no keys and no error, so fingerprint has nothing to report and verify simply finds no match.",
+  "cases": [
+    {
+      "name": "Fingerprint Missing File",
+      "argv": ["fingerprint", "does_not_exist.pem"],
+      "exit": 1
+    },
+    {
+      "name": "Fingerprint Certificate",
+      "note": "A certificate is a PEM block that parses but is not a key.",
+      "argv": ["fingerprint", "test_cert.pem"],
+      "exit": 1
+    },
+    {
+      "name": "Fingerprint File With No PEM Blocks",
+      "argv": ["fingerprint", "test_garbage.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match_text": ""}
+      ]
+    },
+    {
+      "name": "Sign With Public Key",
+      "note": "Signing needs a private key, and the wrong type is rejected before the output is opened.",
+      "argv": ["sign", "--if", "test.txt", "--of", "pubkey.sig.gz", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "pubkey.sig.gz", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify With Certificate",
+      "argv": ["verify", "--if", "test.txt.sig", "--of", "cert.txt", "test_cert.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "cert.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify With File With No PEM Blocks",
+      "note": "No keys are loaded and no error is reported, so this surfaces as a verification failure instead.",
+      "argv": ["verify", "--if", "test.txt.sig", "--of", "garbage.txt", "test_garbage.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "garbage.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify With Missing Key File",
+      "argv": ["verify", "--if", "test.txt.sig", "--of", "missingkey.txt", "does_not_exist.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "missingkey.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Missing Input File",
+      "argv": ["verify", "--if", "does_not_exist.sig", "--of", "missingin.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "missingin.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Inspect Missing Input File",
+      "argv": ["inspect", "--if", "does_not_exist.sig"],
+      "exit": 1,
+      "assert": [
+        {"target": "stdout", "match_text": ""}
+      ]
+    },
+    {
+      "name": "Sign Missing Input File",
+      "argv": ["sign", "--if", "does_not_exist.txt", "--of", "missing.sig.gz", "ed25519_1_key.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "missing.sig.gz", "exists": false}
+      ]
+    }
+  ]
+}

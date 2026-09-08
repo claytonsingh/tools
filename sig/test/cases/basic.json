@@ -1,0 +1,78 @@
+{
+  "group": "basic",
+  "note": "The committed single signature document, read both compressed and plain. Its inspect output is the reference that most other groups reuse, since re-signing and reordering cases are expected to report the same two headers.",
+  "cases": [
+    {
+      "name": "Inspect Uncompressed",
+      "argv": ["inspect", "--if", "test.txt.sig"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_single.txt"}
+      ]
+    },
+    {
+      "name": "Inspect Compressed",
+      "note": "The gzipped form of the same document reports identically, so compression is transparent to the reader.",
+      "argv": ["inspect", "--if", "test.txt.sig.gz"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_single.txt"}
+      ]
+    },
+    {
+      "name": "Verify Correct Public Key",
+      "argv": ["verify", "--if", "test.txt.sig", "--of", "verify-pub.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "verify-pub.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Correct Private Key",
+      "note": "A private key verifies through its public half, so passing the signing key works.",
+      "argv": ["verify", "--if", "test.txt.sig", "--of", "verify-pri.txt", "ed25519_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "verify-pri.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Incorrect Public Key",
+      "note": "A failed verify must not leave behind the zero byte output that opening the destination too early would create.",
+      "argv": ["verify", "--if", "test.txt.sig", "--of", "verify-wrong.txt", "ed25519_2_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "verify-wrong.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Unsigned",
+      "note": "A plain document is valid input, it simply carries no signature for the key to match.",
+      "argv": ["verify", "--if", "test.txt", "--of", "verify-unsigned.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "verify-unsigned.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Inspect Read Only Input",
+      "note": "Reading a document must not require permission to modify it.",
+      "seed": [{"target": "readonly.sig", "from": "test.txt.sig", "read_only": true}],
+      "argv": ["inspect", "--if", "readonly.sig"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_single.txt"}
+      ]
+    },
+    {
+      "name": "Sign Read Only Input",
+      "note": "Signing to a separate destination reads the input only, so a read only source is fine. Ed25519 is deterministic, so the result is the committed document byte for byte.",
+      "seed": [{"target": "readonly.txt", "from": "test.txt", "read_only": true}],
+      "argv": ["sign", "--if", "readonly.txt", "--of", "readonly.sig.gz", "ed25519_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "readonly.sig.gz", "match": "test.txt.sig"}
+      ]
+    }
+  ]
+}

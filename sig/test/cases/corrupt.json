@@ -1,0 +1,247 @@
+{
+  "group": "corrupt",
+  "note": "Five tampered forms of the same signed document, each tried against every public key. Corrupt 1 through 4 damage the signature bytes or the fingerprint, so no key matches. Corrupt 5 leaves the header intact and edits the body, so the hash check is what rejects it. None of them declare files, and that is the assertion: a rejected document must not produce output.",
+  "cases": [
+    {
+      "name": "Verify Corrupt 1 Ed25519 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_1.txt.sig", "--of", "corrupt1-ed25519.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt1-ed25519.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 1 ML-DSA-44 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_1.txt.sig", "--of", "corrupt1-mldsa44.txt", "mldsa44_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt1-mldsa44.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 1 ML-DSA-65 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_1.txt.sig", "--of", "corrupt1-mldsa65.txt", "mldsa65_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt1-mldsa65.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 1 ML-DSA-87 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_1.txt.sig", "--of", "corrupt1-mldsa87.txt", "mldsa87_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt1-mldsa87.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 1 RSA Public Key",
+      "argv": ["verify", "--if", "test_corrupt_1.txt.sig", "--of", "corrupt1-rsa.txt", "rsa-pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt1-rsa.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 1 Mixed Public Key",
+      "argv": ["verify", "--if", "test_corrupt_1.txt.sig", "--of", "corrupt1-mixed.txt", "mixed_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt1-mixed.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 2 Ed25519 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_2.txt.sig", "--of", "corrupt2-ed25519.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt2-ed25519.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 2 ML-DSA-44 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_2.txt.sig", "--of", "corrupt2-mldsa44.txt", "mldsa44_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt2-mldsa44.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 2 ML-DSA-65 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_2.txt.sig", "--of", "corrupt2-mldsa65.txt", "mldsa65_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt2-mldsa65.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 2 ML-DSA-87 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_2.txt.sig", "--of", "corrupt2-mldsa87.txt", "mldsa87_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt2-mldsa87.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 2 RSA Public Key",
+      "argv": ["verify", "--if", "test_corrupt_2.txt.sig", "--of", "corrupt2-rsa.txt", "rsa-pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt2-rsa.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 2 Mixed Public Key",
+      "argv": ["verify", "--if", "test_corrupt_2.txt.sig", "--of", "corrupt2-mixed.txt", "mixed_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt2-mixed.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 3 Ed25519 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_3.txt.sig", "--of", "corrupt3-ed25519.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt3-ed25519.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 3 ML-DSA-44 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_3.txt.sig", "--of", "corrupt3-mldsa44.txt", "mldsa44_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt3-mldsa44.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 3 ML-DSA-65 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_3.txt.sig", "--of", "corrupt3-mldsa65.txt", "mldsa65_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt3-mldsa65.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 3 ML-DSA-87 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_3.txt.sig", "--of", "corrupt3-mldsa87.txt", "mldsa87_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt3-mldsa87.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 3 RSA Public Key",
+      "argv": ["verify", "--if", "test_corrupt_3.txt.sig", "--of", "corrupt3-rsa.txt", "rsa-pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt3-rsa.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 3 Mixed Public Key",
+      "argv": ["verify", "--if", "test_corrupt_3.txt.sig", "--of", "corrupt3-mixed.txt", "mixed_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt3-mixed.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 4 Ed25519 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_4.txt.sig", "--of", "corrupt4-ed25519.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt4-ed25519.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 4 ML-DSA-44 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_4.txt.sig", "--of", "corrupt4-mldsa44.txt", "mldsa44_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt4-mldsa44.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 4 ML-DSA-65 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_4.txt.sig", "--of", "corrupt4-mldsa65.txt", "mldsa65_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt4-mldsa65.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 4 ML-DSA-87 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_4.txt.sig", "--of", "corrupt4-mldsa87.txt", "mldsa87_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt4-mldsa87.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 4 RSA Public Key",
+      "argv": ["verify", "--if", "test_corrupt_4.txt.sig", "--of", "corrupt4-rsa.txt", "rsa-pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt4-rsa.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 4 Mixed Public Key",
+      "argv": ["verify", "--if", "test_corrupt_4.txt.sig", "--of", "corrupt4-mixed.txt", "mixed_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt4-mixed.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 5 Ed25519 Public Key",
+      "note": "The body no longer hashes to the recorded value, which is caught before any key is consulted.",
+      "argv": ["verify", "--if", "test_corrupt_5.txt.sig", "--of", "corrupt5-ed25519.txt", "ed25519_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt5-ed25519.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 5 ML-DSA-44 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_5.txt.sig", "--of", "corrupt5-mldsa44.txt", "mldsa44_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt5-mldsa44.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 5 ML-DSA-65 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_5.txt.sig", "--of", "corrupt5-mldsa65.txt", "mldsa65_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt5-mldsa65.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 5 ML-DSA-87 Public Key",
+      "argv": ["verify", "--if", "test_corrupt_5.txt.sig", "--of", "corrupt5-mldsa87.txt", "mldsa87_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt5-mldsa87.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 5 RSA Public Key",
+      "argv": ["verify", "--if", "test_corrupt_5.txt.sig", "--of", "corrupt5-rsa.txt", "rsa-pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt5-rsa.txt", "exists": false}
+      ]
+    },
+    {
+      "name": "Verify Corrupt 5 Mixed Public Key",
+      "argv": ["verify", "--if", "test_corrupt_5.txt.sig", "--of", "corrupt5-mixed.txt", "mixed_1_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "corrupt5-mixed.txt", "exists": false}
+      ]
+    }
+  ]
+}

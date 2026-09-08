@@ -1,0 +1,13 @@
+# Signed documents embed a hash over their exact bytes, so their line
+# endings must survive checkout unchanged on every platform.
+*.sig -text
+
+# Everything under test is byte sensitive for the same reason: the keys and
+# document bodies the signatures are taken over, the compressed forms, and the
+# expected outputs the harness compares byte for byte. The test plan in
+# test/cases is ordinary JSON, but leaving its line endings alone costs
+# nothing and keeps this to a single rule.
+#
+# Only -text, and not the binary macro, which would also unset diff. Blessing
+# a golden and regenerating a fixture are both reviewed as diffs.
+test/* -text

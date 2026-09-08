@@ -1,0 +1,98 @@
+{
+  "group": "stdio",
+  "note": "The default stdin and stdout paths, which is why the output is streamed rather than written to a temporary file and renamed. Signing to stdout emits gzip, and the runner decompresses before matching, so those expectations name the plain committed document.",
+  "cases": [
+    {
+      "name": "Inspect From Stdin",
+      "argv": ["inspect"],
+      "seed": [{"target": "stdin", "from": "test.txt.sig"}],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_single.txt"}
+      ]
+    },
+    {
+      "name": "Inspect Compressed From Stdin",
+      "note": "Gzip detection works on a pipe, which cannot be seeked, so the magic has to be peeked and pushed back.",
+      "argv": ["inspect"],
+      "seed": [{"target": "stdin", "from": "test.txt.sig.gz"}],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_single.txt"}
+      ]
+    },
+    {
+      "name": "Verify From Stdin",
+      "argv": ["verify", "--of", "stdin-verify.txt", "ed25519_1_pub.pem"],
+      "seed": [{"target": "stdin", "from": "test.txt.sig"}],
+      "exit": 0,
+      "assert": [
+        {"target": "stdin-verify.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify To Stdout",
+      "argv": ["verify", "--if", "test.txt.sig", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify From Stdin To Stdout",
+      "argv": ["verify", "ed25519_1_pub.pem"],
+      "seed": [{"target": "stdin", "from": "test.txt.sig.gz"}],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify To Stdout With Incorrect Public Key",
+      "note": "Nothing reaches stdout, so a consumer downstream of the pipe sees an empty stream rather than an unverified document.",
+      "argv": ["verify", "--if", "test.txt.sig", "ed25519_2_pub.pem"],
+      "exit": 1,
+      "assert": [
+        {"target": "stdout", "match_text": ""}
+      ]
+    },
+    {
+      "name": "Sign To Stdout",
+      "argv": ["sign", "--if", "test.txt", "ed25519_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "test.txt.sig"}
+      ]
+    },
+    {
+      "name": "Sign From Stdin To Stdout",
+      "note": "Signing needs the whole document hashed before the header can be written, which on a pipe means buffering it first.",
+      "argv": ["sign", "ed25519_1_key.pem"],
+      "seed": [{"target": "stdin", "from": "test.txt"}],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "test.txt.sig"}
+      ]
+    },
+    {
+      "name": "Sign Existing Signature From Stdin To Stdout",
+      "note": "The existing Ed25519 signature is kept and the RSA one added.",
+      "argv": ["sign", "rsa-key.pem"],
+      "seed": [{"target": "stdin", "from": "test.txt.sig"}],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "signed_ed25519_rsa.txt.sig"}
+      ]
+    },
+    {
+      "name": "Sign Text From Stdin To Stdout",
+      "note": "Inline seed text rather than a fixture, which is the other way an input reaches the tool.",
+      "argv": ["sign", "ed25519_1_key.pem"],
+      "seed": [{"target": "stdin", "text": "hello\n"}],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "signed_hello.txt.sig"}
+      ]
+    }
+  ]
+}

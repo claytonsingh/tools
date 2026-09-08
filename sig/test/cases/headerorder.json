@@ -1,0 +1,40 @@
+{
+  "group": "headerorder",
+  "note": "The same document as test.txt.sig with its two header lines stored in the other order. WriteHeader sorts on output, so test.txt.sig is the canonical order and new_test.txt.sig is the reverse. Header order carries no meaning, so it must verify, and inspect sorts what it reads so it must report identically.",
+  "cases": [
+    {
+      "name": "Verify Header Order Reversed",
+      "argv": ["verify", "--if", "new_test.txt.sig", "--of", "neworder.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "neworder.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Verify Header Order Reversed Compressed",
+      "argv": ["verify", "--if", "new_test.txt.sig.gz", "--of", "neworder-gz.txt", "ed25519_1_pub.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "neworder-gz.txt", "match": "test.txt"}
+      ]
+    },
+    {
+      "name": "Inspect Header Order Reversed",
+      "note": "Reported identically to the canonical document, which is the whole point of sorting on output.",
+      "argv": ["inspect", "--if", "new_test.txt.sig"],
+      "exit": 0,
+      "assert": [
+        {"target": "stdout", "match": "inspect_single.txt"}
+      ]
+    },
+    {
+      "name": "Sign Header Order Reversed",
+      "note": "Re-signing normalizes the order, so the reversed document signs back to the canonical one byte for byte.",
+      "argv": ["sign", "--if", "new_test.txt.sig", "--of", "reordered.sig.gz", "ed25519_1_key.pem"],
+      "exit": 0,
+      "assert": [
+        {"target": "reordered.sig.gz", "match": "test.txt.sig"}
+      ]
+    }
+  ]
+}
